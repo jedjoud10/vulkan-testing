@@ -12,8 +12,3 @@ pub use instance::*;
 pub use queues::*;
 pub use recorder::*;
 pub use surface::*;
-
-
-fn main() {
-    println!("Hello, world!");
-}

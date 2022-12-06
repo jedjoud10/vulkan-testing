@@ -16,6 +16,8 @@ smallvec = "1.10.0"
 gpu-allocator = { version = "0.21.0", features = ["vulkan"] }
 log = "0.4.17"
 ahash = "0.8.2"
+thread_local = "1.1.4"
+env_logger = "0.10.0"
 
 [features]
 headless = []
