@@ -24,9 +24,11 @@ impl Device {
         instance: &Instance,
         adapter: &Adapter,
     ) -> Device {
+        // Get the graphics and present queue family
+        let family = crate::Queue::pick_queue_family(&adapter.queue_family_properties, adapter, true, vk::QueueFlags::GRAPHICS);
+
         // Create the queue create infos
-        let create_infos = (0..(adapter.queue_family_nums))
-            .into_iter()
+        let create_infos = (std::iter::once(family))
             .map(|family| {
                 *DeviceQueueCreateInfo::builder()
                     .queue_priorities(&[1.0])

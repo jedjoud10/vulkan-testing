@@ -1190,6 +1190,7 @@ dependencies = [
  "ahash",
  "ash",
  "ash-window",
+ "bitflags",
  "bytemuck",
  "env_logger",
  "gpu-allocator",

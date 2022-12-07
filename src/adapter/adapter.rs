@@ -33,6 +33,51 @@ pub struct Adapter {
 }
 
 impl Adapter {
+    // Wrap a raw physical device into an adapter
+    unsafe fn wrap(
+        instance: &Instance,
+        physical_device: PhysicalDevice,
+        surface: &Surface,
+        present_supported_per_family: impl Iterator<Item = bool>
+    ) -> Adapter {
+        let features = instance
+            .instance
+            .get_physical_device_features(physical_device);
+        let properties = instance
+            .instance
+            .get_physical_device_properties(physical_device);
+        let memory_properties = instance
+            .instance
+            .get_physical_device_memory_properties(
+                physical_device,
+            );
+        let surface_capabilities = surface.surface_loader
+            .get_physical_device_surface_capabilities(physical_device, surface.surface).unwrap();
+        let present_modes = surface.surface_loader
+            .get_physical_device_surface_present_modes(physical_device, surface.surface).unwrap();
+        let present_formats = surface.surface_loader
+            .get_physical_device_surface_formats(physical_device, surface.surface).unwrap();
+        let queue_family_properties = instance
+            .instance
+            .get_physical_device_queue_family_properties(physical_device);
+        let queue_family_surface_supported = 
+            present_supported_per_family.collect::<Vec<bool>>();
+        let name = CStr::from_ptr(properties.device_name.as_ptr()).to_str().unwrap().to_owned();
+        Adapter {
+            raw: physical_device,
+            name,
+            memory_properties,
+            features,
+            properties,
+            surface_capabilities,
+            present_modes,
+            present_formats,
+            queue_family_nums: queue_family_properties.len(),
+            queue_family_properties,
+            queue_family_surface_supported,
+        }
+    }
+
     // Pick out a physical adapter automatically for the user
     // Pick a physical device from the Vulkan instance
     pub unsafe fn pick(
@@ -63,124 +108,12 @@ impl Adapter {
 
                 (physical_device, present_supported)
             })
-            .map(|(&physical_device, present_supported_per_family)| {
-                // Get the features of the physical device
-                let features = instance
-                    .instance
-                    .get_physical_device_features(physical_device);
-
-                // Get the properties of the physical device
-                let properties = instance
-                    .instance
-                    .get_physical_device_properties(physical_device);
-
-                // Get the memory properties of the physical device
-                let memory_properties = instance
-                    .instance
-                    .get_physical_device_memory_properties(
-                        physical_device,
-                    );
-
-                // Get the surface capabilities of the physical device
-                let surface_capabilities = surface.surface_loader
-                    .get_physical_device_surface_capabilities(physical_device, surface.surface).unwrap();
-
-                // Get the present modes of the physical device
-                let present_modes = surface.surface_loader
-                    .get_physical_device_surface_present_modes(physical_device, surface.surface).unwrap();
-                    
-                // Get the supported formats of the physical device
-                let present_formats = surface.surface_loader
-                    .get_physical_device_surface_formats(physical_device, surface.surface).unwrap();
-
-                // Get the queue family properties of the physical device
-                let queue_family_properties = instance
-                    .instance
-                    .get_physical_device_queue_family_properties(physical_device);
-
-                // Check each device family and see if we can present to it
-                let queue_family_surface_supported = 
-                    present_supported_per_family.collect::<Vec<bool>>();
-
-                // Get other properties from the adapter
-                let name = CStr::from_ptr(properties.device_name.as_ptr()).to_str().unwrap().to_owned();
-
-                // Convert the values to a simple adapter
-                Adapter {
-                    raw: physical_device,
-                    name,
-                    memory_properties,
-                    features,
-                    properties,
-                    surface_capabilities,
-                    present_modes,
-                    present_formats,
-                    queue_family_nums: queue_family_properties.len(),
-                    queue_family_properties,
-                    queue_family_surface_supported,
-                }
-            }).find(|adapter| adapter.is_physical_device_suitable_base())
+            .map(|(&physical_device, present_supported_per_family)| 
+                Self::wrap(instance, physical_device, surface, present_supported_per_family)).find(|adapter| Self::is_physical_device_suitable(adapter)
+            )
             .expect("Could not find a suitable GPU to use!");
 
         log::debug!("Using the adpater {:?}", adapter.name);
         adapter
-    }
-
-    // Check wether or not a physical device is suitable for rendering
-    // This checks the minimum requirements that we need to achieve to be able to render
-    unsafe fn is_physical_device_suitable_base(
-        &self,
-    ) -> bool {
-        use vk::PhysicalDeviceType;
-        let _type = self.properties.device_type;
-        let surface = self.surface_capabilities;
-        let modes = self.present_modes.as_slice();
-        let formats = self.present_formats.as_slice();
-        log::debug!("Checking if adapter {} is suitable...", self.name);
-
-        // Check if double buffering is supported
-        let double_buffering_supported = surface.min_image_count == 2;
-        log::debug!(
-            "Adapter Double Buffering: {}",
-            double_buffering_supported
-        );
-
-        // Check if the present format is supported
-        let format_supported = formats
-            .iter()
-            .find(|format| {
-                let format_ =
-                    format.format == vk::Format::B8G8R8A8_SRGB;
-                let color_space_ = format.color_space
-                    == vk::ColorSpaceKHR::SRGB_NONLINEAR;
-                format_ && color_space_
-            })
-            .is_some();
-        log::debug!(
-            "Adapter Swapchain Format Supported: {}",
-            format_supported
-        );
-
-        // Check if the minimum required present mode is supported
-        let present_supported = modes
-            .iter()
-            .find(|&&present| {
-                let relaxed =
-                    present == vk::PresentModeKHR::FIFO_RELAXED;
-                let immediate =
-                    present == vk::PresentModeKHR::IMMEDIATE;
-                relaxed || immediate
-            })
-            .is_some();
-
-        // Check the device type
-        let device_type_okay = _type == PhysicalDeviceType::DISCRETE_GPU;
-        log::debug!("Adapter Device Type: {:?}", _type);
-
-        // All the checks must pass
-        double_buffering_supported
-            && format_supported
-            && present_supported
-            && device_type_okay
     }
 }

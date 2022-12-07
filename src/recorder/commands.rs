@@ -7,20 +7,16 @@ vkCmdBeginRenderPass(3)
 vkCmdBeginRenderPass2(3)
 vkCmdBeginTransformFeedbackEXT(3)
 vkCmdBindDescriptorSets(3)
-vkCmdBindIndexBuffer(3)
 vkCmdBindPipeline(3)
 vkCmdBindShadingRateImageNV(3)
-vkCmdBindVertexBuffers(3)
 vkCmdBlitImage(3)
 vkCmdBuildAccelerationStructureNV(3)
 vkCmdClearAttachments(3)
 vkCmdClearColorImage(3)
 vkCmdClearDepthStencilImage(3)
 vkCmdCopyAccelerationStructureNV(3)
-vkCmdCopyBuffer(3)
 vkCmdCopyBufferToImage(3)
 vkCmdCopyImage(3)
-vkCmdCopyImageToBuffer(3)
 vkCmdCopyQueryPoolResults(3)
 vkCmdDebugMarkerBeginEXT(3)
 vkCmdDebugMarkerEndEXT(3)
@@ -46,7 +42,6 @@ vkCmdEndRenderPass(3)
 vkCmdEndRenderPass2(3)
 vkCmdEndTransformFeedbackEXT(3)
 vkCmdExecuteCommands(3)
-vkCmdFillBuffer(3)
 vkCmdInsertDebugUtilsLabelEXT(3)
 vkCmdNextSubpass(3)
 vkCmdNextSubpass2(3)
@@ -82,7 +77,6 @@ vkCmdSetViewport(3)
 vkCmdSetViewportShadingRatePaletteNV(3)
 vkCmdSetViewportWScalingNV(3)
 vkCmdTraceRaysNV(3)
-vkCmdUpdateBuffer(3)
 vkCmdWaitEvents(3)
 vkCmdWriteAccelerationStructuresPropertiesNV(3)
 vkCmdWriteBufferMarkerAMD(3)
@@ -92,14 +86,22 @@ vkCmdWriteTimestamp(3)
 use ash::vk;
 
 // Any type of command that can be applied
-pub(super) enum Command {
+pub(crate) enum Command {
     // Any type of command that gets applied to buffers
     Buffer(super::BufferCommand),
-
-    
 }
 
-// Applies a command to a command buffer
-pub(super) trait FinishCommands {
-    fn finish(self, buf: &vk::CommandBuffer);
+// Records the commands in the actual command buffer
+pub(crate) trait Finish {
+    // Record the commands into the given command buffer
+    unsafe fn finish(self, device: &ash::Device, buffer: vk::CommandBuffer);
 }
+
+impl Finish for Command {
+    unsafe fn finish(self, device: &ash::Device, buffer: vk::CommandBuffer) {
+        match self {
+            Command::Buffer(x) => x.finish(device, buffer),
+        }
+    }
+}
+
