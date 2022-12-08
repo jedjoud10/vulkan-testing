@@ -1,10 +1,6 @@
-use crate::{
-    Adapter, Device, InsertVkCommand, Instance, Recorder, State,
-    Submission,
-};
+use crate::{Device, InsertVkCommand, State};
 use ash::vk;
 use parking_lot::Mutex;
-use std::sync::Arc;
 
 bitflags::bitflags! {
     pub(crate) struct CommandBufferTags: u32 {

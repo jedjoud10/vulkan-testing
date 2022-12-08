@@ -1,15 +1,7 @@
-use std::ffi::CString;
-
 use crate::{Adapter, Instance};
 use ash::vk::{self, DeviceCreateInfo, DeviceQueueCreateInfo};
 
-use gpu_allocator::{
-    vulkan::{
-        Allocation, AllocationCreateDesc, Allocator,
-        AllocatorCreateDesc,
-    },
-    MemoryLocation,
-};
+use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use parking_lot::Mutex;
 
 // This is a logical device that can run multiple commands and that can create Vulkan objects
@@ -97,12 +89,11 @@ impl Device {
         drop(required_device_extensions);
 
         // Le logical device
-        let device = Device {
+
+        Device {
             device,
             allocator: Mutex::new(allocator),
-        };
-
-        device
+        }
     }
 
     // Destroy the logical device

@@ -1,10 +1,5 @@
-use crate::{
-    Adapter, CommandBufferTags, Device, Instance, Pool, Recorder,
-    State, Submission,
-};
+use crate::{Adapter, Device, Instance, Pool, Recorder, Submission};
 use ash::vk;
-use parking_lot::Mutex;
-use std::sync::Arc;
 
 // This will be the main queue that we will access and submit data into
 // For now I only support a single queue cause I am a bit dumb
@@ -25,7 +20,7 @@ pub struct Queue {
 impl Queue {
     // Create the queue families, queues, and default pools
     pub unsafe fn new(
-        instance: &Instance,
+        _instance: &Instance,
         device: &Device,
         adapter: &Adapter,
     ) -> Self {
@@ -89,7 +84,7 @@ impl Queue {
     // This might return a command buffer that is already in the recording state*
     pub unsafe fn acquire(
         &self,
-        device: &Device,
+        _device: &Device,
         force: bool,
     ) -> Recorder {
         // Get the current thread's command pool

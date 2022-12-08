@@ -1,10 +1,9 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 
 use ash::vk::{
     self, PhysicalDevice, PhysicalDeviceFeatures,
-    PhysicalDeviceLimits, PhysicalDeviceMemoryProperties,
-    PhysicalDeviceProperties, PresentModeKHR, SurfaceCapabilitiesKHR,
-    SurfaceFormatKHR,
+    PhysicalDeviceLimits, PhysicalDeviceProperties, PresentModeKHR,
+    SurfaceCapabilitiesKHR, SurfaceFormatKHR,
 };
 
 use crate::{Instance, Surface};

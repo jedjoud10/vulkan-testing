@@ -1,16 +1,5 @@
-use std::ffi::CString;
-
-use crate::{Adapter, Device, Instance, Queue};
-use ash::vk::{self, DeviceCreateInfo, DeviceQueueCreateInfo};
-
-use gpu_allocator::{
-    vulkan::{
-        Allocation, AllocationCreateDesc, Allocator,
-        AllocatorCreateDesc,
-    },
-    MemoryLocation,
-};
-use parking_lot::Mutex;
+use crate::Device;
+use ash::vk::{self};
 
 impl Device {
     // Create a single simple semaphore

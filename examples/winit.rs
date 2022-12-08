@@ -25,7 +25,7 @@ fn main() {
         let adapter = Adapter::pick(&instance, &surface);
         let device = Device::new(&instance, &adapter);
         let queue = Queue::new(&instance, &device, &adapter);
-        let swapchain = Swapchain::new(
+        let _swapchain = Swapchain::new(
             &adapter, &surface, &device, &instance, &window, false,
         );
 
@@ -62,7 +62,7 @@ fn main() {
 
         recorder.copy_buffer(buffer2, buffer1, vec![*copy1, *copy2]);
         queue.submit(&device, recorder);
-        let mut recorder = queue.acquire(&device, true);
+        let recorder = queue.acquire(&device, true);
         queue.submit(&device, recorder);
 
         let ptr = alloc2.mapped_slice().unwrap();

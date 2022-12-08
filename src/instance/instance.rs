@@ -4,11 +4,8 @@ use ash::{
     Entry,
 };
 
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle,
-    RawWindowHandle,
-};
-use std::{ffi::CString, sync::Arc};
+use raw_window_handle::HasRawDisplayHandle;
+use std::ffi::CString;
 use winit::window::Window;
 
 // This is a Vulkan instance that gets loaded in

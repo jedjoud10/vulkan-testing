@@ -1,10 +1,7 @@
 use ash::vk::{
-    self, PhysicalDevice, PhysicalDeviceFeatures,
-    PhysicalDeviceMemoryProperties, PhysicalDeviceProperties,
-    PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR,
+    self, PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR,
 };
 
-use crate::{Instance, Surface};
 use vk::PhysicalDeviceType;
 
 impl super::Adapter {

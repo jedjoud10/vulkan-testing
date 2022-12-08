@@ -169,7 +169,7 @@ impl Recorder {
         layout: vk::ImageLayout,
         regions: Vec<vk::BufferImageCopy>,
     ) {
-        for buffer_image_copy in regions.iter() {
+        for _buffer_image_copy in regions.iter() {
             //self.push_buffer_access(BufferAccess { buffer, mutable: true, size: buffer_image_copy., offset: buffer_image_copy.buffer_offset });
             //self.push_buffer_access(BufferAccess { buffer: dst, mutable: true, size: copy.size, offset: copy.dst_offset });
         }
@@ -269,7 +269,7 @@ impl super::InsertVkCommand for BufferCommand {
             BufferCommand::UpdateBuffer {
                 src,
                 offset,
-                size,
+                size: _,
                 data,
             } => device.cmd_update_buffer(cmd, src, offset, &data),
         }

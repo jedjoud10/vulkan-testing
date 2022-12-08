@@ -1,6 +1,5 @@
-use crate::{Adapter, Device, Instance, Queue, Surface};
+use crate::{Adapter, Device, Instance, Surface};
 use ash::vk::{self};
-use parking_lot::Mutex;
 
 // Wrapper around the vulkan swapchain
 pub struct Swapchain {

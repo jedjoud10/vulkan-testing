@@ -48,6 +48,6 @@ impl InsertVkCommand for Barrier {
 }
 
 // Convert the locally stored command to local groups that automatically place barriers within them
-pub(crate) fn complete(state: State) -> CompletedState {
+pub(crate) fn complete(_state: State) -> CompletedState {
     todo!()
 }

@@ -1,16 +1,7 @@
-use std::ffi::CString;
+use crate::{Device, Queue};
+use ash::vk::{self};
 
-use crate::{Adapter, Device, Instance, Queue};
-use ash::vk::{self, DeviceCreateInfo, DeviceQueueCreateInfo};
-
-use gpu_allocator::{
-    vulkan::{
-        Allocation, AllocationCreateDesc, Allocator,
-        AllocatorCreateDesc,
-    },
-    MemoryLocation,
-};
-use parking_lot::Mutex;
+use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc};
 
 impl Device {
     // Create raw buffer with no memory
@@ -78,7 +69,7 @@ impl Device {
     ) -> vk::DeviceAddress {
         let builder =
             vk::BufferDeviceAddressInfo::builder().buffer(buffer);
-        self.device.get_buffer_device_address(&*builder)
+        self.device.get_buffer_device_address(&builder)
     }
 
     // Free a buffer and it's allocation
