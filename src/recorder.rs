@@ -1,8 +1,6 @@
 mod recorder;
 mod commands;
-mod barrier;
-mod buffer;
-pub use buffer::*;
+mod state;
+pub use state::*;
 pub use recorder::*;
 pub use commands::*;
-pub use barrier::*;

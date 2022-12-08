@@ -72,10 +72,9 @@ impl Queue {
 
     // Aquire a new free command recorder that we can use to record commands
     // This might return a command buffer that is already in the recording state* 
-    pub unsafe fn aquire(
+    pub unsafe fn acquire(
         &self,
         device: &Device,
-        chainable: bool,
         force: bool,
     ) -> Recorder {
         // Get the current thread's command pool
@@ -83,47 +82,36 @@ impl Queue {
         let pool = &self.pools[0];
 
         // Get a free command buffer 
-            // Allocate new one if not
-        let index = pool.free();
-        log::debug!("Found a free command buffer at index {}", index);
-        let buf = &pool.buffers[index];
-        buf.tags.lock().set(CommandBufferTags::RECORDING, true);
-        buf.tags.lock().set(CommandBufferTags::CHAINABLE, chainable);
-        let state = buf.state.lock().take().unwrap();
-        log::debug!("Currently chained commands: {}", state.commands.len());
-        log::debug!("Currently chained barriers: {}", state.barriers.len());
+        let (index,
+            buffer,
+            state
+        ) = pool.find_free_and_lock();
 
         // Create the recorder
         Recorder {
+            force,
             index,
             state,
-            raw: buf.raw,
+            raw: buffer,
         }
     }
-
 
     // Submit the command buffer (this doesn't actually submit it, it only steals it's state)
     // You can use the "force" parameter to force the submission of this command buffer
     pub unsafe fn submit(&self, device: &Device, recorder: Recorder) -> Submission {
-        log::debug!("Submitting (locally storing) command recorder");
+        log::warn!("Submitting (locally storing) command recorder");
         log::debug!("Currently stored commands: {}", recorder.state.commands.len());
-        log::debug!("Currentl stored barriers: {}", recorder.state.barriers.len());
 
-        device.device.begin_command_buffer(recorder.raw, &vk::CommandBufferBeginInfo::default()).unwrap();
-        let state = recorder.state;
-        crate::Finish::finish(state, &device.device, recorder.raw);
-        device.device.end_command_buffer(recorder.raw).unwrap();
-
-        let bufs = [recorder.raw];
-        let info = vk::SubmitInfo::builder()
-            .command_buffers(&bufs);
-
-        device.device.queue_submit(self.queue, &[*info], vk::Fence::null()).unwrap();
-        device.device.queue_wait_idle(self.queue).unwrap();
-
+        let pool = &self.pools[0];
+        let index = recorder.index;
+        if recorder.force {
+            pool.submit(self.queue, device, recorder.index, recorder.state);
+        } else {
+            pool.unlock(recorder.index, recorder.state);
+        }
 
         Submission {
-            index: recorder.index
+            index
         }
     }
 

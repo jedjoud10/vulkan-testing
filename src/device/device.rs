@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 
 // This is a logical device that can run multiple commands and that can create Vulkan objects
 pub struct Device {
-    pub(crate) device: ash::Device,
+    pub device: ash::Device,
     pub(crate) allocator: Mutex<Allocator>,
 }
 
@@ -65,7 +65,7 @@ impl Device {
             log_leaks_on_shutdown: true,
             store_stack_traces: false,
             log_allocations: true,
-            log_frees: true,
+            log_frees: false,
             log_stack_traces: false,
         };
 

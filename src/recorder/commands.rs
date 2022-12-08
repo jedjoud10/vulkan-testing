@@ -1,107 +1,151 @@
-/*
-vkCmdBeginConditionalRenderingEXT(3)
-vkCmdBeginDebugUtilsLabelEXT(3)
-vkCmdBeginQuery(3)
-vkCmdBeginQueryIndexedEXT(3)
-vkCmdBeginRenderPass(3)
-vkCmdBeginRenderPass2(3)
-vkCmdBeginTransformFeedbackEXT(3)
-vkCmdBindDescriptorSets(3)
-vkCmdBindPipeline(3)
-vkCmdBindShadingRateImageNV(3)
-vkCmdBlitImage(3)
-vkCmdBuildAccelerationStructureNV(3)
-vkCmdClearAttachments(3)
-vkCmdClearColorImage(3)
-vkCmdClearDepthStencilImage(3)
-vkCmdCopyAccelerationStructureNV(3)
-vkCmdCopyBufferToImage(3)
-vkCmdCopyImage(3)
-vkCmdCopyQueryPoolResults(3)
-vkCmdDebugMarkerBeginEXT(3)
-vkCmdDebugMarkerEndEXT(3)
-vkCmdDebugMarkerInsertEXT(3)
-vkCmdDispatch(3)
-vkCmdDispatchBase(3)
-vkCmdDispatchIndirect(3)
-vkCmdDraw(3)
-vkCmdDrawIndexed(3)
-vkCmdDrawIndexedIndirect(3)
-vkCmdDrawIndexedIndirectCount(3)
-vkCmdDrawIndirect(3)
-vkCmdDrawIndirectByteCountEXT(3)
-vkCmdDrawIndirectCount(3)
-vkCmdDrawMeshTasksIndirectCountNV(3)
-vkCmdDrawMeshTasksIndirectNV(3)
-vkCmdDrawMeshTasksNV(3)
-vkCmdEndConditionalRenderingEXT(3)
-vkCmdEndDebugUtilsLabelEXT(3)
-vkCmdEndQuery(3)
-vkCmdEndQueryIndexedEXT(3)
-vkCmdEndRenderPass(3)
-vkCmdEndRenderPass2(3)
-vkCmdEndTransformFeedbackEXT(3)
-vkCmdExecuteCommands(3)
-vkCmdInsertDebugUtilsLabelEXT(3)
-vkCmdNextSubpass(3)
-vkCmdNextSubpass2(3)
-vkCmdPipelineBarrier(3)
-vkCmdProcessCommandsNVX(3)
-vkCmdPushConstants(3)
-vkCmdPushDescriptorSetKHR(3)
-vkCmdPushDescriptorSetWithTemplateKHR(3)
-vkCmdReserveSpaceForCommandsNVX(3)
-vkCmdResetEvent(3)
-vkCmdResetQueryPool(3)
-vkCmdResolveImage(3)
-vkCmdSetBlendConstants(3)
-vkCmdSetCheckpointNV(3)
-vkCmdSetCoarseSampleOrderNV(3)
-vkCmdSetDepthBias(3)
-vkCmdSetDepthBounds(3)
-vkCmdSetDeviceMask(3)
-vkCmdSetDiscardRectangleEXT(3)
-vkCmdSetEvent(3)
-vkCmdSetExclusiveScissorNV(3)
-vkCmdSetLineStippleEXT(3)
-vkCmdSetLineWidth(3)
-vkCmdSetPerformanceMarkerINTEL(3)
-vkCmdSetPerformanceOverrideINTEL(3)
-vkCmdSetPerformanceStreamMarkerINTEL(3)
-vkCmdSetSampleLocationsEXT(3)
-vkCmdSetScissor(3)
-vkCmdSetStencilCompareMask(3)
-vkCmdSetStencilReference(3)
-vkCmdSetStencilWriteMask(3)
-vkCmdSetViewport(3)
-vkCmdSetViewportShadingRatePaletteNV(3)
-vkCmdSetViewportWScalingNV(3)
-vkCmdTraceRaysNV(3)
-vkCmdWaitEvents(3)
-vkCmdWriteAccelerationStructuresPropertiesNV(3)
-vkCmdWriteBufferMarkerAMD(3)
-vkCmdWriteTimestamp(3)
-*/
-
 use ash::vk;
+use crate::Recorder;
+
 
 // Any type of command that can be applied
 pub(crate) enum Command {
-    // Any type of command that gets applied to buffers
-    Buffer(super::BufferCommand),
+    Buffer(BufferCommand),
+}
+
+// A type of access
+pub(crate) enum Access {
+    Buffer(BufferAccess),
 }
 
 // Records the commands in the actual command buffer
-pub(crate) trait Finish {
+pub(crate) trait InsertVkCommand {
     // Record the commands into the given command buffer
-    unsafe fn finish(self, device: &ash::Device, buffer: vk::CommandBuffer);
+    unsafe fn insert(self, device: &ash::Device, buffer: vk::CommandBuffer);
 }
 
-impl Finish for Command {
-    unsafe fn finish(self, device: &ash::Device, buffer: vk::CommandBuffer) {
+impl InsertVkCommand for Command {
+    unsafe fn insert(self, device: &ash::Device, buffer: vk::CommandBuffer) {
         match self {
-            Command::Buffer(x) => x.finish(device, buffer),
+            Command::Buffer(x) => x.insert(device, buffer),
         }
     }
 }
 
+// Enum that contains all the types of commands that can be applied to buffers
+pub(crate) enum BufferCommand {
+    BindIndexBuffer {
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        index_type: vk::IndexType
+    },
+    BindVertexBuffer {
+        first_binding: u32,
+        buffers: Vec<vk::Buffer>,
+        offsets: Vec<vk::DeviceSize>,
+    },
+    CopyBuffer {
+        src: vk::Buffer,
+        dst: vk::Buffer,
+        regions: Vec<vk::BufferCopy>,
+    },
+    CopyImageToBuffer {
+        dst: vk::Buffer,
+        src: vk::Image,
+        layout: vk::ImageLayout,
+        regions: Vec<vk::BufferImageCopy>,
+    },
+    FillBuffer {
+        src: vk::Buffer,
+        offset: vk::DeviceSize,
+        size: vk::DeviceSize, 
+        data: u32,
+    },
+    UpdateBuffer {
+        src: vk::Buffer,
+        offset: vk::DeviceSize,
+        size: vk::DeviceSize,
+        data: Vec<u8>,
+    },
+}
+
+// Enum that tells us how a buffer is accessed
+#[derive(Debug)]
+pub(crate) struct BufferAccess {
+    pub(crate) buffer: vk::Buffer,
+    pub(crate) mutable: bool,
+    pub(crate) size: u64,
+    pub(crate) offset: u64,
+}
+
+// Buffer commands
+impl Recorder {
+    // Add a new buffer command internally
+    unsafe fn push_buffer_cmd(&mut self, cmd: BufferCommand) {
+        self.state.commands.push(Command::Buffer(cmd));
+    }
+
+    // Add a new buffer access internally
+    unsafe fn push_buffer_access(&mut self, access: BufferAccess) {
+        self.state.access.push(Access::Buffer(access));
+    }
+    
+    // Bind an index buffer to the command buffer render pass
+    pub unsafe fn bind_index_buffer(&mut self, buffer: vk::Buffer, offset: vk::DeviceSize, index_type: vk::IndexType) {
+        self.push_buffer_cmd(BufferCommand::BindIndexBuffer { buffer, offset, index_type });
+        self.push_buffer_access(BufferAccess { buffer, mutable: false, size: vk::WHOLE_SIZE, offset  });
+    }
+    
+    // Bind vertex buffers to the command buffer render pass
+    pub unsafe fn bind_vertex_buffers(&mut self, first_binding: u32, buffers: Vec<vk::Buffer>, offsets: Vec<vk::DeviceSize>) {
+        for (i, &buffer) in buffers.iter().enumerate() {
+            self.push_buffer_access(BufferAccess { buffer, mutable: false, size: vk::WHOLE_SIZE, offset: offsets[i]  });
+        }
+        self.push_buffer_cmd(BufferCommand::BindVertexBuffer { first_binding, buffers, offsets });
+    }
+    
+    // Copy a buffer to another buffer in GPU memory
+    pub unsafe fn copy_buffer(&mut self, src: vk::Buffer, dst: vk::Buffer, regions: Vec<vk::BufferCopy>) {
+        for buffer_copy in regions.iter() {
+            self.push_buffer_access(BufferAccess { buffer: src, mutable: false, size: buffer_copy.size, offset: buffer_copy.src_offset });
+            self.push_buffer_access(BufferAccess { buffer: dst, mutable: true, size: buffer_copy.size, offset: buffer_copy.dst_offset });
+        }
+        self.push_buffer_cmd(BufferCommand::CopyBuffer { src, dst, regions });
+    }
+    
+    // Copy an image to a buffer in GPU memory
+    pub unsafe fn copy_image_to_buffer(&mut self, buffer: vk::Buffer, image: vk::Image, layout: vk::ImageLayout, regions: Vec<vk::BufferImageCopy>) {
+        for buffer_image_copy in regions.iter() {
+            //self.push_buffer_access(BufferAccess { buffer, mutable: true, size: buffer_image_copy., offset: buffer_image_copy.buffer_offset });
+            //self.push_buffer_access(BufferAccess { buffer: dst, mutable: true, size: copy.size, offset: copy.dst_offset });
+        }
+        self.push_buffer_cmd(BufferCommand::CopyImageToBuffer { dst: buffer, src: image, layout, regions });
+    }
+    
+    // Clear a buffer to zero
+    pub unsafe fn cmd_clear_buffer(&mut self, buffer: vk::Buffer, offset: vk::DeviceSize, size: vk::DeviceSize) {
+        self.push_buffer_cmd(BufferCommand::FillBuffer { src: buffer, offset, size, data: 0 });
+        self.push_buffer_access(BufferAccess { buffer, mutable: true, size, offset });
+    }
+
+    // Update the buffer using memory that is directly stored within the command buffer
+    pub unsafe fn cmd_update_buffer(&mut self, buffer: vk::Buffer, offset: vk::DeviceSize, size: vk::DeviceSize, data: Vec<u8>) {
+        self.push_buffer_cmd(BufferCommand::UpdateBuffer { src: buffer, offset, size, data });
+        self.push_buffer_access(BufferAccess { buffer, mutable: true, size, offset });
+    }
+}
+
+
+
+impl super::InsertVkCommand for BufferCommand {
+    unsafe fn insert(self, device: &ash::Device, cmd: vk::CommandBuffer) {
+        match self {
+            BufferCommand::BindIndexBuffer { buffer, offset, index_type } => 
+                device.cmd_bind_index_buffer(cmd, buffer, offset, index_type),
+            BufferCommand::BindVertexBuffer { first_binding, buffers, offsets } => 
+                device.cmd_bind_vertex_buffers(cmd, first_binding, &buffers, &offsets),
+            BufferCommand::CopyBuffer { src, dst, regions } => 
+                device.cmd_copy_buffer(cmd, src, dst, &regions),
+            BufferCommand::CopyImageToBuffer { dst, src, layout, regions } => 
+                device.cmd_copy_image_to_buffer(cmd, src, layout, dst, &regions),
+            BufferCommand::FillBuffer { src, offset, size, data } => 
+                device.cmd_fill_buffer(cmd, src, offset, size, data),
+            BufferCommand::UpdateBuffer { src, offset, size, data } => 
+                device.cmd_update_buffer(cmd, src, offset, &data),
+        }
+    }
+}
