@@ -1,5 +1,5 @@
-use ash::vk;
 use crate::State;
+use ash::vk;
 
 // A recorder can keep a command buffer cached until we flush it
 // This is used to reduce the number of submissions we have to make to the GPU

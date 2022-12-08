@@ -1,4 +1,4 @@
-use ash::{vk, extensions::khr};
+use ash::{extensions::khr, vk};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use winit::window::Window;
 
@@ -12,7 +12,10 @@ pub struct Surface {
 
 impl Surface {
     // Create a new surface from the instance (assumes that the extension was already set)
-    pub unsafe fn new(instance: &Instance, window: &Window) -> Surface {
+    pub unsafe fn new(
+        instance: &Instance,
+        window: &Window,
+    ) -> Surface {
         // Create a surface loader and the surface itself
         let surface = ash_window::create_surface(
             &instance.entry,

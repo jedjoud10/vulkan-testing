@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use crate::{Adapter, Instance, Queue, Device};
+use crate::{Adapter, Device, Instance, Queue};
 use ash::vk::{self, DeviceCreateInfo, DeviceQueueCreateInfo};
 
 use gpu_allocator::{

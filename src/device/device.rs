@@ -20,12 +20,17 @@ pub struct Device {
 
 impl Device {
     // Create a new logical device from the physical adapter
-        pub unsafe fn new(
+    pub unsafe fn new(
         instance: &Instance,
         adapter: &Adapter,
     ) -> Device {
         // Get the graphics and present queue family
-        let family = crate::Queue::pick_queue_family(&adapter.queue_family_properties, adapter, true, vk::QueueFlags::GRAPHICS);
+        let family = crate::Queue::pick_queue_family(
+            &adapter.queue_family_properties,
+            adapter,
+            true,
+            vk::QueueFlags::GRAPHICS,
+        );
 
         // Create the queue create infos
         let create_infos = (std::iter::once(family))
@@ -37,11 +42,12 @@ impl Device {
             .collect::<Vec<_>>();
 
         // Create logical device create info
-        let required_device_extensions =  crate::global::required_device_extensions();
+        let required_device_extensions =
+            crate::global::required_device_extensions();
         let logical_device_extensions = required_device_extensions
-                .iter()
-                .map(|s| s.as_ptr())
-                .collect::<Vec<_>>();
+            .iter()
+            .map(|s| s.as_ptr())
+            .collect::<Vec<_>>();
         let logical_device_create_info = DeviceCreateInfo::builder()
             .queue_create_infos(&create_infos)
             .enabled_extension_names(&logical_device_extensions)
@@ -83,7 +89,9 @@ impl Device {
             buffer_device_address: false,
         })
         .unwrap();
-        log::debug!("Created the Vulkan memory allocator using gpu-allocator");
+        log::debug!(
+            "Created the Vulkan memory allocator using gpu-allocator"
+        );
 
         // Drop the cstrings
         drop(required_device_extensions);

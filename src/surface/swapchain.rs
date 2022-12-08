@@ -166,9 +166,16 @@ impl Swapchain {
     pub unsafe fn destroy(self, device: &Device) {
         device.device.device_wait_idle().unwrap();
 
-        device.device.destroy_semaphore(self.image_available_semaphore, None);
-        device.device.destroy_semaphore(self.rendering_finished_semaphore, None);
-        device.device.destroy_fence(self.rendering_finished_fence, None);
+        device
+            .device
+            .destroy_semaphore(self.image_available_semaphore, None);
+        device.device.destroy_semaphore(
+            self.rendering_finished_semaphore,
+            None,
+        );
+        device
+            .device
+            .destroy_fence(self.rendering_finished_fence, None);
         self.loader.destroy_swapchain(self.raw, None);
     }
 }

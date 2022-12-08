@@ -4,23 +4,25 @@ use ash::vk::{
     PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR,
 };
 
-use vk::PhysicalDeviceType;
 use crate::{Instance, Surface};
+use vk::PhysicalDeviceType;
 
 impl super::Adapter {
     // Check wether or not a physical device is suitable for rendering
     // This checks the minimum requirements that we need to achieve to be able to render
-    pub(super) unsafe fn is_physical_device_suitable(
-        &self,
-    ) -> bool {
+    pub(super) unsafe fn is_physical_device_suitable(&self) -> bool {
         let _type = self.properties.device_type;
         let surface = self.surface_capabilities;
         let modes = self.present_modes.as_slice();
         let formats = self.present_formats.as_slice();
-        log::debug!("Checking if adapter {} is suitable...", self.name);
+        log::debug!(
+            "Checking if adapter {} is suitable...",
+            self.name
+        );
 
         // Check all the requirements that are needed for us to use this Adapter
-        let double_buffering_supported = is_double_buffering_supported(surface);
+        let double_buffering_supported =
+            is_double_buffering_supported(surface);
         let format_supported = is_surface_format_supported(formats);
         let present_supported = is_present_mode_supported(modes);
         let device_type_okay = is_device_type_optimal(_type);
@@ -41,7 +43,9 @@ fn is_device_type_optimal(_type: PhysicalDeviceType) -> bool {
 }
 
 // Check if the Adapter supports a min image count of 2
-fn is_double_buffering_supported(surface: SurfaceCapabilitiesKHR) -> bool {
+fn is_double_buffering_supported(
+    surface: SurfaceCapabilitiesKHR,
+) -> bool {
     let double_buffering_supported = surface.min_image_count == 2;
     log::debug!(
         "Adapter Double Buffering: {}",
@@ -55,14 +59,12 @@ fn is_present_mode_supported(modes: &[PresentModeKHR]) -> bool {
     let present_supported = modes
         .iter()
         .find(|&&present| {
-            let relaxed =
-                present == vk::PresentModeKHR::FIFO_RELAXED;
-            let immediate =
-                present == vk::PresentModeKHR::IMMEDIATE;
+            let relaxed = present == vk::PresentModeKHR::FIFO_RELAXED;
+            let immediate = present == vk::PresentModeKHR::IMMEDIATE;
             relaxed || immediate
         })
         .is_some();
-        
+
     present_supported
 }
 
@@ -71,8 +73,7 @@ fn is_surface_format_supported(formats: &[SurfaceFormatKHR]) -> bool {
     let format_supported = formats
         .iter()
         .find(|format| {
-            let format_ =
-                format.format == vk::Format::B8G8R8A8_SRGB;
+            let format_ = format.format == vk::Format::B8G8R8A8_SRGB;
             let color_space_ = format.color_space
                 == vk::ColorSpaceKHR::SRGB_NONLINEAR;
             format_ && color_space_

@@ -1,6 +1,6 @@
-mod device;
 mod buffers;
+mod device;
 mod sync;
 pub use buffers::*;
-pub use sync::*;
 pub use device::*;
+pub use sync::*;

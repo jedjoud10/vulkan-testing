@@ -16,7 +16,7 @@ pub struct Instance {
     // Context related
     pub(crate) entry: Entry,
     pub(crate) instance: ash::Instance,
-    
+
     // Only enable validation and message logging in debug mode
     #[cfg(debug_assertions)]
     debug_utils: DebugUtils,
@@ -26,13 +26,18 @@ pub struct Instance {
 
 impl Instance {
     // Create an instance from a winit window, app name, and engine name
-    pub unsafe fn new(window: &Window, app_name: impl ToString, engine_name: impl ToString) -> Self {
+    pub unsafe fn new(
+        window: &Window,
+        app_name: impl ToString,
+        engine_name: impl ToString,
+    ) -> Self {
         // Load the loading functions
         let entry = Entry::load().unwrap();
 
         // Create the app info
         let app_name = CString::new(app_name.to_string()).unwrap();
-        let engine_name = CString::new(engine_name.to_string()).unwrap();
+        let engine_name =
+            CString::new(engine_name.to_string()).unwrap();
         let app_info = *vk::ApplicationInfo::builder()
             .application_name(&app_name)
             .api_version(vk::API_VERSION_1_3)
@@ -52,19 +57,19 @@ impl Instance {
             )
             .unwrap()
             .to_vec();
-        let required_instance_extensions = crate::global::required_instance_extensions();
+        let required_instance_extensions =
+            crate::global::required_instance_extensions();
         extension_names_ptrs.extend(
-            required_instance_extensions
-                .iter()
-                .map(|s| s.as_ptr()),
+            required_instance_extensions.iter().map(|s| s.as_ptr()),
         );
 
         // Get the required validation layers
-        let required_validation_layers = crate::global::required_validation_layers();
+        let required_validation_layers =
+            crate::global::required_validation_layers();
         let validation_ptrs = required_validation_layers
-                .iter()
-                .map(|cstr| cstr.as_ptr())
-                .collect::<Vec<_>>();
+            .iter()
+            .map(|cstr| cstr.as_ptr())
+            .collect::<Vec<_>>();
 
         // Setup the instance create info (with debug info)
         #[cfg(debug_assertions)]
@@ -99,7 +104,9 @@ impl Instance {
                 None,
             )
             .unwrap();
-            log::debug!("Created the Vulkan debug messenger successfully");
+        log::debug!(
+            "Created the Vulkan debug messenger successfully"
+        );
 
         // Drop the cstrings
         drop(required_instance_extensions);

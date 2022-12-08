@@ -1,6 +1,6 @@
+use super::Command;
+use crate::{Access, InsertVkCommand};
 use ash::vk;
-use crate::{InsertVkCommand, Access};
-use super::{Command};
 
 // Recorder state that is stored within the recorders that is dynamically bound to command buffers
 #[derive(Default)]
@@ -30,7 +30,11 @@ pub(crate) struct Barrier {
 }
 
 impl InsertVkCommand for Barrier {
-    unsafe fn insert(self, device: &ash::Device, buffer: vk::CommandBuffer) {
+    unsafe fn insert(
+        self,
+        device: &ash::Device,
+        buffer: vk::CommandBuffer,
+    ) {
         device.cmd_pipeline_barrier(
             buffer,
             self.src_stage_mask,
@@ -38,7 +42,7 @@ impl InsertVkCommand for Barrier {
             self.dependency_flags,
             &self.memory_barriers,
             &self.buffer_memory_barriers,
-            &self.image_memory_barriers
+            &self.image_memory_barriers,
         );
     }
 }
