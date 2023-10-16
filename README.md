@@ -1,3 +1,5 @@
+October 16th, 2023 edit: This is my first miserable failed attempt at trying to abstract vulkan code. Do note that I was learning how to use vulkan *whilst* trying to write this lib so there's a __lot__ that could be better. 
+
 This is a custom Vulkan abstraction layer I built that is used internally by ``cflake-engine``.
 
 This Vulkan Abstraction Layer allows me to hide the painstaking and ugly parts of vulkan (setup boilerplate and manual synchronization) and handle them automatically for us.
