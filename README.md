@@ -1,4 +1,4 @@
-October 16th, 2023 edit: This is my first miserable failed attempt at trying to abstract vulkan code. Do note that I was learning how to use vulkan *whilst* trying to write this lib so there's a __lot__ that could be better. 
+October 16th, 2023 edit: This is my first miserable failed attempt at trying to abstract vulkan code. Do note that I was learning how to use vulkan *whilst* trying to write this lib so there's a __lot__ that could be better. I'm pretty sure it neither compiles nor works properly lol
 
 This is a custom Vulkan abstraction layer I built that is used internally by ``cflake-engine``.
 
