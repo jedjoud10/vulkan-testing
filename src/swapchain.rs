@@ -1,3 +1,4 @@
+/*
 use crate::{Adapter, Device, Instance, Surface};
 use ash::vk::{self};
 
@@ -373,3 +374,4 @@ impl Swapchain {
     }
     */
 }
+*/
