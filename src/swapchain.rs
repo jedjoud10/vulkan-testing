@@ -110,25 +110,7 @@ impl Swapchain {
         extent: vk::Extent2D,
         present: vk::PresentModeKHR,
     ) -> vk::SwapchainCreateInfoKHR {
-        *vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface.surface)
-            .min_image_count(
-                adapter.surface_capabilities.min_image_count,
-            )
-            .image_format(format.format)
-            .image_color_space(format.color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .image_usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSFER_DST,
-            )
-            .clipped(true)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .old_swapchain(vk::SwapchainKHR::null())
-            .present_mode(present)
+        *
     }
 
     // Pick the proper swapchain presentation mode

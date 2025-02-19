@@ -1,4 +1,4 @@
-use ash::vk;
+use ash::vk::{self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT};
 use std::{
     borrow::Cow,
     ffi::{c_void, CStr},
@@ -31,8 +31,11 @@ pub unsafe fn create_debug_messenger(entry: &ash::Entry, instance: &ash::Instanc
                 None,
             )
             .unwrap();
+        //debug_utils.submit_debug_utils_message(DebugUtilsMessageSeverityFlagsEXT::ERROR, DebugUtilsMessageTypeFlagsEXT::GENERAL, &DebugUtilsMessengerCallbackDataEXT::default().message(c"amogus"));
         debug_messenger = Some((debug_utils, messenger));
     }
+
+
 
     debug_messenger
 }
