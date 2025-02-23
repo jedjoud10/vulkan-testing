@@ -1,104 +1,44 @@
-use crate::{Adapter, Instance};
-use ash::vk::{self, DeviceCreateInfo, DeviceQueueCreateInfo};
+use ash::vk;
 
-use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
-use parking_lot::Mutex;
+use crate::queue;
 
-// This is a logical device that can run multiple commands and that can create Vulkan objects
-pub struct Device {
-    pub device: ash::Device,
-    pub(crate) allocator: Mutex<Allocator>,
-}
+pub unsafe fn create_device_and_queue(
+    instance: &ash::Instance,
+    physical_device: vk::PhysicalDevice,
+    surface_loader: &ash::khr::surface::Instance,
+    surface_khr: vk::SurfaceKHR
+) -> (ash::Device, u32, vk::Queue) {
+    let queue_family_properties = instance.get_physical_device_queue_family_properties(physical_device);
+    let queue_family_index = queue::find_appropriate_queue_family_index(physical_device, queue_family_properties, &surface_loader, surface_khr) as u32;
 
-impl Device {
-    // Create a new logical device from the physical adapter
-    pub unsafe fn new(
-        instance: &Instance,
-        adapter: &Adapter,
-    ) -> Device {
-        // Get the graphics and present queue family
-        let family = crate::Queue::pick_queue_family(
-            &adapter.queue_family_properties,
-            adapter,
-            true,
-            vk::QueueFlags::GRAPHICS,
-        );
+    let queue_create_info = vk::DeviceQueueCreateInfo::default()
+        .queue_priorities(&[1.0])
+        .queue_family_index(queue_family_index);
+    let queue_create_infos = [queue_create_info];
 
-        // Create the queue create infos
-        let create_infos = (std::iter::once(family))
-            .map(|family| {
-                *DeviceQueueCreateInfo::builder()
-                    .queue_priorities(&[1.0])
-                    .queue_family_index(family as u32)
-            })
-            .collect::<Vec<_>>();
+    let device_features = vk::PhysicalDeviceFeatures::default();
+    let mut device_features_13 = vk::PhysicalDeviceVulkan13Features::default()
+        .synchronization2(true);
 
-        // Create logical device create info
-        let required_device_extensions =
-            crate::global::required_device_extensions();
-        let logical_device_extensions = required_device_extensions
-            .iter()
-            .map(|s| s.as_ptr())
-            .collect::<Vec<_>>();
-        let logical_device_create_info = DeviceCreateInfo::builder()
-            .queue_create_infos(&create_infos)
-            .enabled_extension_names(&logical_device_extensions)
-            .enabled_features(&adapter.features);
+    let device_extension_names = vec![
+        ash::khr::swapchain::NAME,
+    ];
 
-        // Create the logical device
-        let device = instance
-            .instance
-            .create_device(
-                adapter.raw,
-                &logical_device_create_info,
-                None,
-            )
-            .expect("Could not create the logical device");
-        log::debug!("Created the Vulkan device successfully");
+    let device_extension_names_ptrs = device_extension_names .iter()
+        .map(|cstr| cstr.as_ptr())
+        .collect::<Vec<_>>();
 
-        // Pick allocator debug settings
-        #[cfg(debug_assertions)]
-        let debug_settings = gpu_allocator::AllocatorDebugSettings {
-            log_memory_information: false,
-            log_leaks_on_shutdown: true,
-            store_stack_traces: false,
-            log_allocations: true,
-            log_frees: false,
-            log_stack_traces: false,
-        };
+    let device_create_info = vk::DeviceCreateInfo::default()
+        .enabled_extension_names(&device_extension_names_ptrs)
+        .enabled_features(&device_features)
+        .queue_create_infos(&queue_create_infos)
+        .push_next(&mut device_features_13);
 
-        // No debugging
-        #[cfg(not(debug_assertions))]
-        let debug_settings =
-            gpu_allocator::AllocatorDebugSettings::default();
+    let device = instance.create_device(physical_device, &device_create_info, None).unwrap();
+    log::info!("created device");   
 
-        // Create a memory allocator (gpu_allocator)
-        let allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: instance.instance.clone(),
-            device: device.clone(),
-            physical_device: adapter.raw,
-            debug_settings,
-            buffer_device_address: false,
-        })
-        .unwrap();
-        log::debug!(
-            "Created the Vulkan memory allocator using gpu-allocator"
-        );
+    let queue = device.get_device_queue(queue_family_index, 0);
+    log::info!("fetched queue");
 
-        // Drop the cstrings
-        drop(required_device_extensions);
-
-        // Le logical device
-
-        Device {
-            device,
-            allocator: Mutex::new(allocator),
-        }
-    }
-
-    // Destroy the logical device
-    pub unsafe fn destroy(self) {
-        self.device.device_wait_idle().unwrap();
-        self.device.destroy_device(None);
-    }
+    (device, queue_family_index, queue)
 }

@@ -6,14 +6,13 @@ pub unsafe fn find_appropriate_queue_family_index(
     surface_loader: &ash::khr::surface::Instance,
     surface_khr: vk::SurfaceKHR,
 ) -> usize {
-    
     queue_family_properties.iter()
-    .enumerate()
-    .position(|(i, props)| {
-        let present = surface_loader.get_physical_device_surface_support(physical_device, i as u32, surface_khr).unwrap();
-        let graphics = props.queue_flags.contains(vk::QueueFlags::GRAPHICS);
-        let compute = props.queue_flags.contains(vk::QueueFlags::COMPUTE);
-        present && graphics && compute
-    })
-    .unwrap()
+        .enumerate()
+        .position(|(i, props)| {
+            let present = surface_loader.get_physical_device_surface_support(physical_device, i as u32, surface_khr).unwrap();
+            let graphics = props.queue_flags.contains(vk::QueueFlags::GRAPHICS);
+            let compute = props.queue_flags.contains(vk::QueueFlags::COMPUTE);
+            present && graphics && compute
+        })
+        .unwrap()
 }

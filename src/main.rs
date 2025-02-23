@@ -1,16 +1,24 @@
-use std::ffi::{CStr, CString};
+#![allow(unused_variables)]
+#![allow(dead_code)]
+use std::collections::HashMap;
 use std::time::Instant;
 mod debug;
+mod assets;
+use assets::damn;
+mod device;
 mod surface;
+mod swapchain;
+mod instance;
 mod physical_device;
 mod queue;
 use ash;
 use ash::vk;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::{Window, WindowId};
+
 
 struct InternalApp {
     window: Window,
@@ -30,51 +38,24 @@ struct InternalApp {
     queue: vk::Queue,
     queue_family_index: u32,
     pool: vk::CommandPool,
+    compute_shader_module: vk::ShaderModule,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+    pipeline_layout: vk::PipelineLayout,
+    compute_pipeline: vk::Pipeline,
+    descriptor_pool: vk::DescriptorPool,
 }
 
 impl InternalApp {
     pub unsafe fn new(event_loop: &ActiveEventLoop) -> Self {
+        let mut assets = HashMap::<&str, Vec<u32>>::new();
+        asset!("test", assets);
+        let raw = &*assets["test"];
+
         let window = event_loop.create_window(Window::default_attributes()).unwrap();
-        let rwh = window.display_handle().unwrap().as_raw();        
+        let raw_display_handle = window.display_handle().unwrap().as_raw();        
         let entry = ash::Entry::load().unwrap();
-
-        let app_info = vk::ApplicationInfo::default()
-            .application_name(c"")
-            .api_version(vk::API_VERSION_1_3)
-            .application_version(0)
-            .engine_version(0)
-            .engine_name(c"");
-
-        let mut extension_names_ptrs =
-            ash_window::enumerate_required_extensions(rwh)
-            .unwrap()
-            .to_vec();
-
-        let required_instance_extensions = vec![
-            ash::ext::debug_utils::NAME,
-            ash::khr::surface::NAME,
-        ];
-
-        extension_names_ptrs.extend(
-            required_instance_extensions.iter().map(|s| s.as_ptr()),
-        );
-
-        let required_validation_layers: Vec<&'static CStr> = {
-            #[cfg(debug_assertions)]
-            {vec![c"VK_LAYER_KHRONOS_validation"]}
-            #[cfg(not(debug_assertions))]
-            {vec![]}
-        };
-
-        let validation_ptrs = required_validation_layers
-            .iter()
-            .map(|cstr| cstr.as_ptr())
-            .collect::<Vec<_>>();
-        let instance_create_info = vk::InstanceCreateInfo::default()
-            .application_info(&app_info)
-            .enabled_layer_names(&validation_ptrs)
-            .enabled_extension_names(&extension_names_ptrs);
-        let instance = entry.create_instance(&instance_create_info, None).unwrap();
+        
+        let instance = instance::create_instance(&entry, raw_display_handle);
         log::info!("created instance");
         let debug_messenger = debug::create_debug_messenger(&entry, &instance);  
         log::info!("created debug utils messenger");      
@@ -89,37 +70,8 @@ impl InternalApp {
         let physical_device = physical_device_candidates[0].0;
         log::info!("selected physical device");
         
-        let queue_family_properties = instance.get_physical_device_queue_family_properties(physical_device);
-        let queue_family_index = queue::find_appropriate_queue_family_index(physical_device, queue_family_properties, &surface_loader, surface_khr) as u32;
-
-        let queue_create_info = vk::DeviceQueueCreateInfo::default()
-            .queue_priorities(&[1.0])
-            .queue_family_index(queue_family_index);
-        let queue_create_infos = [queue_create_info];
-
-        let device_features = vk::PhysicalDeviceFeatures::default();
-        let mut device_features_13 = vk::PhysicalDeviceVulkan13Features::default()
-            .synchronization2(true);
-
-        let device_extension_names = vec![
-            ash::khr::swapchain::NAME,
-        ];
-
-        let device_extension_names_ptrs = device_extension_names .iter()
-            .map(|cstr| cstr.as_ptr())
-            .collect::<Vec<_>>();
-
-        let device_create_info = vk::DeviceCreateInfo::default()
-            .enabled_extension_names(&device_extension_names_ptrs)
-            .enabled_features(&device_features)
-            .queue_create_infos(&queue_create_infos)
-            .push_next(&mut device_features_13);
-
-        let device = instance.create_device(physical_device, &device_create_info, None).unwrap();
-        log::info!("created device");   
-
-        let queue = device.get_device_queue(queue_family_index, 0);
-        log::info!("fetched queue");
+        let (device, queue_family_index, queue) = device::create_device_and_queue(&instance, physical_device, &surface_loader, surface_khr);
+        log::info!("created device and fetched main queue");
 
         let pool_create_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue_family_index)
@@ -127,39 +79,60 @@ impl InternalApp {
         let pool = device.create_command_pool(&pool_create_info, None).unwrap();
         log::info!("create cmd pool");
         
-        let surface_capabilities =  surface_loader.get_physical_device_surface_capabilities(physical_device, surface_khr).unwrap();
-        let present_modes: Vec<vk::PresentModeKHR> = surface_loader.get_physical_device_surface_present_modes(physical_device, surface_khr).unwrap();
-        let surface_formats: Vec<vk::SurfaceFormatKHR> = surface_loader.get_physical_device_surface_formats(physical_device, surface_khr).unwrap();
-        let present = present_modes.iter().copied().find(|&x| x == vk::PresentModeKHR::IMMEDIATE || x == vk::PresentModeKHR::MAILBOX).unwrap();
-        let extent = surface_capabilities.current_extent;
-
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
-            .surface(surface_khr)
-            .min_image_count(
-                surface_capabilities.min_image_count,
-            )
-            .image_format(surface_formats[0].format)
-            .image_color_space(surface_formats[0].color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .image_usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSFER_DST,
-            )
-            .clipped(true)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .old_swapchain(vk::SwapchainKHR::null())
-            .present_mode(present);
-
-        let swapchain_loader = ash::khr::swapchain::Device::new(&instance, &device);
-        let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
-        let images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
+        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(&instance, &surface_loader, surface_khr, physical_device, &device);
         let begin_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_fence = device.create_fence(&Default::default(), None).unwrap();
 
+        let compute_shader_module_create_info = vk::ShaderModuleCreateInfo::default()
+            .code(raw)
+            .flags(vk::ShaderModuleCreateFlags::empty());
+        let compute_shader_module = device.create_shader_module(&compute_shader_module_create_info, None).unwrap();
+
+        let compute_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
+            .flags(vk::PipelineShaderStageCreateFlags::empty())
+            .name(c"main")
+            .stage(vk::ShaderStageFlags::COMPUTE)
+            .module(compute_shader_module);
+
+        let descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding::default()
+            .binding(0)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_count(1);
+        let descriptor_set_layout_bindings = [descriptor_set_layout_binding];
+
+        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::default()
+            .flags(vk::DescriptorSetLayoutCreateFlags::empty())
+            .bindings(&descriptor_set_layout_bindings);
+
+        let descriptor_set_layout = device.create_descriptor_set_layout(&descriptor_set_layout_create_info, None).unwrap();
+        let descriptor_set_layouts = [descriptor_set_layout];
+
+        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
+            .push_constant_ranges(&[])
+            .flags(vk::PipelineLayoutCreateFlags::empty())
+            .set_layouts(&descriptor_set_layouts);
+
+        let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_create_info, None).unwrap();
+
+        let compute_pipeline_create_info = vk::ComputePipelineCreateInfo::default()
+            .layout(pipeline_layout)
+            .stage(compute_stage_create_info);
+        let compute_pipelines = device.create_compute_pipelines(vk::PipelineCache::null(), &[compute_pipeline_create_info], None).unwrap();
+        let compute_pipeline = compute_pipelines[0];
+
+        let descriptor_pool_size = vk::DescriptorPoolSize::default()
+            .descriptor_count(1)
+            .ty(vk::DescriptorType::STORAGE_IMAGE);
+        let descriptor_pool_sizes = [descriptor_pool_size]; 
+
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
+            .max_sets(1)
+            .pool_sizes(&descriptor_pool_sizes);
+
+        let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).unwrap();
 
         Self {
             window,
@@ -179,20 +152,25 @@ impl InternalApp {
             end_fence,
             queue,
             pool,
+            compute_shader_module,
+            descriptor_set_layout,
+            pipeline_layout,
+            compute_pipeline,
+            descriptor_pool,
         }
     }
 
     pub unsafe fn render(&mut self, delta: f32, elapsed: f32,) {
         self.device.reset_fences(&[self.end_fence]).unwrap();
 
-        let (index, suboptimal) = self.swapchain_loader.acquire_next_image(
+        let (index, _) = self.swapchain_loader.acquire_next_image(
             self.swapchain,
             u64::MAX,
             self.begin_semaphore,
             vk::Fence::null()
         ).unwrap();
         let image = self.images[index as usize];
-        
+
         let cmd_buffer_create_info = vk::CommandBufferAllocateInfo::default()
             .command_buffer_count(1)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -207,13 +185,24 @@ impl InternalApp {
             .level_count(1)
             .layer_count(1);
 
+        let image_view_create_info = vk::ImageViewCreateInfo::default()
+            .components(vk::ComponentMapping::default())
+            .flags(vk::ImageViewCreateFlags::empty())
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .image(image)
+            .subresource_range(subresource_range)
+            .view_type(vk::ImageViewType::TYPE_2D);
+        
+        let image_view = self.device.create_image_view(&image_view_create_info, None).unwrap();
+
+
         let undefined_to_clear_layout_transition = vk::ImageMemoryBarrier2::default()
             .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::GENERAL)
             .src_access_mask(vk::AccessFlags2::NONE)
-            .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE)
             .src_stage_mask(vk::PipelineStageFlags2::NONE)
-            .dst_stage_mask(vk::PipelineStageFlags2::ALL_TRANSFER)
+            .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .src_queue_family_index(self.queue_family_index)
             .dst_queue_family_index(self.queue_family_index)
             .image(image)
@@ -223,16 +212,47 @@ impl InternalApp {
             .image_memory_barriers(&image_memory_barriers);
         self.device.cmd_pipeline_barrier2(cmd, &dep);
 
-        self.device.cmd_clear_color_image(cmd, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &vk::ClearColorValue {
+        /*
+        self.device.cmd_clear_color_image(cmd, image, vk::ImageLayout::GENERAL, &vk::ClearColorValue {
             float32: [elapsed.sin() * 0.5 + 0.5; 4]
-        }, &[subresource_range]);
+        }, &[subresource_range]);*/
 
+        let layouts = [self.descriptor_set_layout];
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(self.descriptor_pool)
+            .set_layouts(&layouts);
+        let descriptor_sets = self.device.allocate_descriptor_sets(&descriptor_set_allocate_info).unwrap();
+        let descriptor_set = descriptor_sets[0];
+
+        let descriptor_image_info = vk::DescriptorImageInfo::default()
+            .image_view(image_view)
+            .image_layout(vk::ImageLayout::GENERAL)
+            .sampler(vk::Sampler::null());
+        let descriptor_image_infos = [descriptor_image_info];
+
+        let descriptor_write = vk::WriteDescriptorSet::default()
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .dst_binding(0)
+            .dst_set(descriptor_set)
+            .image_info(&descriptor_image_infos);
+
+        self.device.update_descriptor_sets(&[descriptor_write], &[]);
+        
+        self.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline_layout, 0, &descriptor_sets, &[]);
+        self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute_pipeline);
+
+        let size = self.window.inner_size();
+        let width_group_size = (size.width as f32 / 32f32).ceil() as u32;
+        let height_group_size = (size.height as f32 / 32f32).ceil() as u32;
+        self.device.cmd_dispatch(cmd, width_group_size, height_group_size, 1);
+        
         let clear_to_present_layout_transition = vk::ImageMemoryBarrier2::default()
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .old_layout(vk::ImageLayout::GENERAL)
             .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .src_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE)
             .dst_access_mask(vk::AccessFlags2::MEMORY_READ)
-            .src_stage_mask(vk::PipelineStageFlags2::ALL_TRANSFER)
+            .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .dst_stage_mask(vk::PipelineStageFlags2::NONE)
             .src_queue_family_index(self.queue_family_index)
             .dst_queue_family_index(self.queue_family_index)
@@ -267,6 +287,9 @@ impl InternalApp {
         self.device.wait_for_fences(&[self.end_fence], true, u64::MAX).unwrap();
         self.swapchain_loader.queue_present(self.queue, &present_info).unwrap();
         self.device.free_command_buffers(self.pool, &[cmd]);
+
+        self.device.destroy_image_view(image_view, None);
+        self.device.free_descriptor_sets(self.descriptor_pool, &descriptor_sets).unwrap();
     }
 
     pub unsafe fn destroy(self) {
@@ -274,6 +297,13 @@ impl InternalApp {
             inst.destroy_debug_utils_messenger(debug_messenger, None);
             log::info!("destroyed debug utils messenger");
         }
+
+        self.device.destroy_pipeline(self.compute_pipeline, None);
+        self.device.destroy_pipeline_layout(self.pipeline_layout, None);
+        self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+        self.device.destroy_shader_module(self.compute_shader_module, None);
+
+        self.device.destroy_descriptor_pool(self.descriptor_pool, None);
 
         // TODO: Just cope with the error messages vro 
         self.device.wait_for_fences(&[self.end_fence], true, u64::MAX).unwrap();
@@ -310,7 +340,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => unsafe {
                 event_loop.exit();

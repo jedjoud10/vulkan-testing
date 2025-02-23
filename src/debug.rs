@@ -1,4 +1,4 @@
-use ash::vk::{self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT};
+use ash::vk::{self};
 use std::{
     borrow::Cow,
     ffi::{c_void, CStr},
@@ -21,7 +21,7 @@ pub unsafe fn create_debug_messenger_create_info(
 }
 
 pub unsafe fn create_debug_messenger(entry: &ash::Entry, instance: &ash::Instance) -> Option<(ash::ext::debug_utils::Instance, ash::vk::DebugUtilsMessengerEXT)> {
-    let mut debug_messenger = None;
+    let debug_messenger;
     #[cfg(debug_assertions)]
     {
         let debug_utils = ash::ext::debug_utils::Instance::new(&entry, &instance);
@@ -34,7 +34,10 @@ pub unsafe fn create_debug_messenger(entry: &ash::Entry, instance: &ash::Instanc
         //debug_utils.submit_debug_utils_message(DebugUtilsMessageSeverityFlagsEXT::ERROR, DebugUtilsMessageTypeFlagsEXT::GENERAL, &DebugUtilsMessengerCallbackDataEXT::default().message(c"amogus"));
         debug_messenger = Some((debug_utils, messenger));
     }
-
+    #[cfg(not(debug_assertions))]
+    {
+        debug_messenger = None;
+    }
 
 
     debug_messenger
