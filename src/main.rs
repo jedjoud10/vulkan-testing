@@ -1,16 +1,26 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
-use std::collections::HashMap;
-use std::time::Instant;
 mod debug;
 mod assets;
 use assets::damn;
+use assets::convert;
 mod device;
 mod surface;
 mod swapchain;
 mod instance;
 mod physical_device;
 mod queue;
+mod input;
+mod movement;
+
+
+use bytemuck::Pod;
+use bytemuck::Zeroable;
+use input::Input;
+use movement::Movement;
+use winit::keyboard::KeyCode;
+use std::collections::HashMap;
+use std::time::Instant;
 use ash;
 use ash::vk;
 use winit::application::ApplicationHandler;
@@ -19,8 +29,19 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::{Window, WindowId};
 
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct PushConstants {
+    screen_resolution: vek::Vec2<f32>,
+    _padding: vek::Vec2<f32>,
+    matrix: vek::Mat4<f32>,
+    position: vek::Vec4<f32>,
+}
 
 struct InternalApp {
+    input: Input,
+    movement: Movement,
+
     window: Window,
     entry: ash::Entry,
     device: ash::Device,
@@ -52,6 +73,8 @@ impl InternalApp {
         let raw = &*assets["test"];
 
         let window = event_loop.create_window(Window::default_attributes()).unwrap();
+        window.set_cursor_grab(winit::window::CursorGrabMode::Confined).unwrap();
+        window.set_cursor_visible(false);
         let raw_display_handle = window.display_handle().unwrap().as_raw();        
         let entry = ash::Entry::load().unwrap();
         
@@ -79,7 +102,10 @@ impl InternalApp {
         let pool = device.create_command_pool(&pool_create_info, None).unwrap();
         log::info!("create cmd pool");
         
-        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(&instance, &surface_loader, surface_khr, physical_device, &device);
+        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(&instance, &surface_loader, surface_khr, physical_device, &device, vk::Extent2D {
+            width: 800,
+            height: 600,
+        });
         let begin_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_fence = device.create_fence(&Default::default(), None).unwrap();
@@ -109,8 +135,14 @@ impl InternalApp {
         let descriptor_set_layout = device.create_descriptor_set_layout(&descriptor_set_layout_create_info, None).unwrap();
         let descriptor_set_layouts = [descriptor_set_layout];
 
+        let push_constant_range = vk::PushConstantRange::default()
+            .offset(0)
+            .size(size_of::<PushConstants>() as u32)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE);
+        let push_constants = [push_constant_range];
+
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .push_constant_ranges(&[])
+            .push_constant_ranges(&push_constants)
             .flags(vk::PipelineLayoutCreateFlags::empty())
             .set_layouts(&descriptor_set_layouts);
 
@@ -135,6 +167,11 @@ impl InternalApp {
         let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).unwrap();
 
         Self {
+            input: Default::default(),
+            movement: Movement {
+                position: vek::Vec3::unit_y() * 3f32,
+                ..Default::default()
+            },
             window,
             instance,
             entry,
@@ -158,6 +195,22 @@ impl InternalApp {
             compute_pipeline,
             descriptor_pool,
         }
+    }
+
+    pub unsafe fn resize(&mut self, width: u32, height: u32) {
+        self.device.device_wait_idle().unwrap();
+
+        self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+
+        let extent = vk::Extent2D {
+            width,
+            height
+        };
+
+        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(&self.instance, &self.surface_loader, self.surface_khr, self.physical_device, &self.device, extent);
+        self.images = images;
+        self.swapchain_loader = swapchain_loader;
+        self.swapchain = swapchain;
     }
 
     pub unsafe fn render(&mut self, delta: f32, elapsed: f32,) {
@@ -200,7 +253,7 @@ impl InternalApp {
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::GENERAL)
             .src_access_mask(vk::AccessFlags2::NONE)
-            .dst_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE)
+            .dst_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE | vk::AccessFlags2::TRANSFER_WRITE)
             .src_stage_mask(vk::PipelineStageFlags2::NONE)
             .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .src_queue_family_index(self.queue_family_index)
@@ -212,10 +265,9 @@ impl InternalApp {
             .image_memory_barriers(&image_memory_barriers);
         self.device.cmd_pipeline_barrier2(cmd, &dep);
 
-        /*
         self.device.cmd_clear_color_image(cmd, image, vk::ImageLayout::GENERAL, &vk::ClearColorValue {
             float32: [elapsed.sin() * 0.5 + 0.5; 4]
-        }, &[subresource_range]);*/
+        }, &[subresource_range]);
 
         let layouts = [self.descriptor_set_layout];
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
@@ -245,12 +297,25 @@ impl InternalApp {
         let size = self.window.inner_size();
         let width_group_size = (size.width as f32 / 32f32).ceil() as u32;
         let height_group_size = (size.height as f32 / 32f32).ceil() as u32;
+
+        let size = vek::Vec2::<u32>::new(size.width, size.height).map(|x| x as f32);
+
+        let push_constants = PushConstants {
+            screen_resolution: size,
+            _padding: Default::default(),
+            matrix: self.movement.view_matrix,
+            position: self.movement.position.with_w(0f32),
+        };
+
+        let raw = bytemuck::bytes_of(&push_constants);
+
+        self.device.cmd_push_constants(cmd, self.pipeline_layout, vk::ShaderStageFlags::COMPUTE, 0, raw);
         self.device.cmd_dispatch(cmd, width_group_size, height_group_size, 1);
         
         let clear_to_present_layout_transition = vk::ImageMemoryBarrier2::default()
             .old_layout(vk::ImageLayout::GENERAL)
             .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .src_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE)
+            .src_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE | vk::AccessFlags2::TRANSFER_WRITE)
             .dst_access_mask(vk::AccessFlags2::MEMORY_READ)
             .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .dst_stage_mask(vk::PipelineStageFlags2::NONE)
@@ -351,12 +416,44 @@ impl ApplicationHandler for App {
                 let new = Instant::now(); 
                 let elapsed = (new - self.start).as_secs_f32();
                 let delta  = (new - self.last).as_secs_f32();
+
+                let size = inner.window.inner_size().cast::<f32>();
+                inner.movement.update(&inner.input, size.width / size.height, delta);
+
+                if inner.input.get_button(KeyCode::F5).pressed() {
+                    if inner.window.fullscreen().is_none() {
+                        inner.window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                    } else {
+                        inner.window.set_fullscreen(None);
+                    }
+                }
+
                 inner.window.request_redraw();
                 inner.render(delta, elapsed);
                 self.last = new;
+                input::update(&mut inner.input);
             }
-            _ => (),
+            WindowEvent::Resized(new) => unsafe {
+                let inner = self.internal.as_mut().unwrap();
+                inner.resize(new.width, new.height);
+            }
+
+            // This is horrid...
+            _ => {
+                let inner = self.internal.as_mut().unwrap();
+                input::window_event(&mut inner.input, &event);
+            },
         }
+    }
+
+    fn device_event(
+            &mut self,
+            event_loop: &ActiveEventLoop,
+            device_id: winit::event::DeviceId,
+            event: winit::event::DeviceEvent,
+        ) {
+        let inner = self.internal.as_mut().unwrap();
+        input::device_event(&mut inner.input, &event);
     }
 }
 
