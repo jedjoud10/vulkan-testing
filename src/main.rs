@@ -16,6 +16,7 @@ mod movement;
 
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use gpu_allocator::vulkan::Allocation;
 use input::Input;
 use movement::Movement;
 use winit::keyboard::KeyCode;
@@ -53,6 +54,7 @@ struct InternalApp {
     swapchain_loader: ash::khr::swapchain::Device,
     swapchain: vk::SwapchainKHR,
     images: Vec<vk::Image>,
+    rt_images: Vec::<(vk::Image, Allocation)>,
     begin_semaphore: vk::Semaphore,
     end_semaphore: vk::Semaphore,
     end_fence: vk::Fence,
@@ -67,7 +69,7 @@ struct InternalApp {
     allocator: gpu_allocator::vulkan::Allocator,
     voxel_image: vk::Image,
     voxel_image_view: vk::ImageView,
-    voxel_image_allocation: gpu_allocator::vulkan::Allocation,
+    voxel_image_allocation: Allocation,
 }
 
 impl InternalApp {
@@ -98,18 +100,41 @@ impl InternalApp {
         log::info!("selected physical device");
         
         let (device, queue_family_index, queue) = device::create_device_and_queue(&instance, physical_device, &surface_loader, surface_khr);
+        let queue_family_indices = [queue_family_index];
         log::info!("created device and fetched main queue");
+
+        let mut allocator = gpu_allocator::vulkan::Allocator::new(&gpu_allocator::vulkan::AllocatorCreateDesc {
+            instance: instance.clone(),
+            device: device.clone(),
+            physical_device: physical_device.clone(),
+            debug_settings: gpu_allocator::AllocatorDebugSettings::default(),
+            buffer_device_address: false,
+            allocation_sizes: gpu_allocator::AllocationSizes::default(),
+        }).unwrap();
+        log::info!("created gpu allocator");
 
         let pool_create_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue_family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
         let pool = device.create_command_pool(&pool_create_info, None).unwrap();
         log::info!("create cmd pool");
-        
-        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(&instance, &surface_loader, surface_khr, physical_device, &device, vk::Extent2D {
+
+        let extent = vk::Extent2D {
             width: 800,
             height: 600,
-        });
+        };
+        
+        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(&instance, &surface_loader, surface_khr, physical_device, &device, extent);
+        log::info!("created swapchain with {} in-flight images", images.len());
+
+        let rt_images: Vec::<(vk::Image, Allocation)> = (0..images.len()).into_iter().map(|_| {
+            swapchain::create_temporary_target_render_texture(&instance, &surface_loader, surface_khr, physical_device, &device, &mut allocator, queue_family_index, extent)
+        }).collect();
+        log::info!("created {} in-flight render texture images", images.len());
+
+        swapchain::transfer_rt_images(&device, queue_family_index, &rt_images, pool, queue);
+        log::info!("transferred layout of render texture images");
+
         let begin_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_fence = device.create_fence(&Default::default(), None).unwrap();
@@ -187,15 +212,6 @@ impl InternalApp {
             .array_layers(1);
         let voxel_image = device.create_image(&voxel_image_create_info, None).unwrap();
         let requirements = device.get_image_memory_requirements(voxel_image);
-        
-        let mut allocator = gpu_allocator::vulkan::Allocator::new(&gpu_allocator::vulkan::AllocatorCreateDesc {
-            instance: instance.clone(),
-            device: device.clone(),
-            physical_device: physical_device.clone(),
-            debug_settings: gpu_allocator::AllocatorDebugSettings::default(),
-            buffer_device_address: false,
-            allocation_sizes: gpu_allocator::AllocationSizes::default(),
-        }).unwrap();
 
         let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
             name: "Voxel Image Allocation",
@@ -254,6 +270,7 @@ impl InternalApp {
             voxel_image,
             voxel_image_view,
             voxel_image_allocation: allocation,
+            rt_images,
         }
     }
 
@@ -261,6 +278,11 @@ impl InternalApp {
         self.device.device_wait_idle().unwrap();
 
         self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+
+        for (image, allocation) in self.rt_images.drain(..) {
+            self.device.destroy_image(image, None);
+            self.allocator.free(allocation).unwrap();
+        }
 
         let extent = vk::Extent2D {
             width,
@@ -271,6 +293,12 @@ impl InternalApp {
         self.images = images;
         self.swapchain_loader = swapchain_loader;
         self.swapchain = swapchain;
+
+        let rt_images: Vec::<(vk::Image, Allocation)> = (0..self.images.len()).into_iter().map(|_| {
+            swapchain::create_temporary_target_render_texture(&self.instance, &self.surface_loader, self.surface_khr, self.physical_device, &self.device, &mut self.allocator, self.queue_family_index, extent)
+        }).collect();
+        swapchain::transfer_rt_images(&self.device, self.queue_family_index, &rt_images, self.pool, self.queue);
+        self.rt_images = rt_images;
     }
 
     pub unsafe fn render(&mut self, delta: f32, elapsed: f32,) {
@@ -282,7 +310,8 @@ impl InternalApp {
             self.begin_semaphore,
             vk::Fence::null()
         ).unwrap();
-        let image = self.images[index as usize];
+        let dst_image = self.images[index as usize];
+        let (src_image, _) = self.rt_images[index as usize];
 
         let cmd_buffer_create_info = vk::CommandBufferAllocateInfo::default()
             .command_buffer_count(1)
@@ -298,36 +327,46 @@ impl InternalApp {
             .level_count(1)
             .layer_count(1);
 
-        let image_view_create_info = vk::ImageViewCreateInfo::default()
+        let src_image_view_create_info = vk::ImageViewCreateInfo::default()
             .components(vk::ComponentMapping::default())
             .flags(vk::ImageViewCreateFlags::empty())
             .format(vk::Format::R8G8B8A8_UNORM)
-            .image(image)
+            .image(src_image)
+            .subresource_range(subresource_range)
+            .view_type(vk::ImageViewType::TYPE_2D);
+
+        let dst_image_view_create_info = vk::ImageViewCreateInfo::default()
+            .components(vk::ComponentMapping::default())
+            .flags(vk::ImageViewCreateFlags::empty())
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .image(dst_image)
             .subresource_range(subresource_range)
             .view_type(vk::ImageViewType::TYPE_2D);
         
-        let image_view = self.device.create_image_view(&image_view_create_info, None).unwrap();
+        let src_image_view = self.device.create_image_view(&src_image_view_create_info, None).unwrap();
+        let dst_image_view = self.device.create_image_view(&dst_image_view_create_info, None).unwrap();
 
-
-        let undefined_to_clear_layout_transition = vk::ImageMemoryBarrier2::default()
+        let dst_undefined_to_blit_dst_layout_transition = vk::ImageMemoryBarrier2::default()
             .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::GENERAL)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .src_access_mask(vk::AccessFlags2::NONE)
-            .dst_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE | vk::AccessFlags2::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
             .src_stage_mask(vk::PipelineStageFlags2::NONE)
             .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .src_queue_family_index(self.queue_family_index)
             .dst_queue_family_index(self.queue_family_index)
-            .image(image)
+            .image(dst_image)
             .subresource_range(subresource_range);
-        let image_memory_barriers = [undefined_to_clear_layout_transition];
+        let image_memory_barriers = [dst_undefined_to_blit_dst_layout_transition];
         let dep = vk::DependencyInfo::default()
             .image_memory_barriers(&image_memory_barriers);
         self.device.cmd_pipeline_barrier2(cmd, &dep);
 
-        self.device.cmd_clear_color_image(cmd, image, vk::ImageLayout::GENERAL, &vk::ClearColorValue {
+        /*
+        self.device.cmd_clear_color_image(cmd, dst_image, vk::ImageLayout::GENERAL, &vk::ClearColorValue {
             float32: [elapsed.sin() * 0.5 + 0.5; 4]
-        }, &[subresource_range]);
+            }, &[subresource_range]);
+        */
 
         let layouts = [self.descriptor_set_layout];
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
@@ -337,7 +376,7 @@ impl InternalApp {
         let descriptor_set = descriptor_sets[0];
 
         let descriptor_image_info = vk::DescriptorImageInfo::default()
-            .image_view(image_view)
+            .image_view(src_image_view)
             .image_layout(vk::ImageLayout::GENERAL)
             .sampler(vk::Sampler::null());
         let descriptor_image_infos = [descriptor_image_info];
@@ -355,10 +394,12 @@ impl InternalApp {
         self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute_pipeline);
 
         let size = self.window.inner_size();
-        let width_group_size = (size.width as f32 / 32f32).ceil() as u32;
-        let height_group_size = (size.height as f32 / 32f32).ceil() as u32;
+        let size = vek::Vec2::<u32>::new(size.width, size.height).map(|val| val / swapchain::SCALING_FACTOR);
 
-        let size = vek::Vec2::<u32>::new(size.width, size.height).map(|x| x as f32);
+        let width_group_size = (size.x as f32 / 32f32).ceil() as u32;
+        let height_group_size = (size.y as f32 / 32f32).ceil() as u32;
+
+        let size = size.map(|x| x as f32);
 
         let push_constants = PushConstants {
             screen_resolution: size,
@@ -371,19 +412,46 @@ impl InternalApp {
 
         self.device.cmd_push_constants(cmd, self.pipeline_layout, vk::ShaderStageFlags::COMPUTE, 0, raw);
         self.device.cmd_dispatch(cmd, width_group_size, height_group_size, 1);
+
+        let origin_offset = vk::Offset3D::default();
+        let src_extent_offset = vk::Offset3D::default()
+            .x(self.window.inner_size().width as i32 / swapchain::SCALING_FACTOR as i32)
+            .y(self.window.inner_size().height as i32 / swapchain::SCALING_FACTOR as i32)
+            .z(1);
+        let dst_extent_offset = vk::Offset3D::default()
+            .x(self.window.inner_size().width as i32)
+            .y(self.window.inner_size().height as i32)
+            .z(1);
+        let src_offsets = [origin_offset, src_extent_offset];
+        let dst_offsets = [origin_offset, dst_extent_offset];
+
+        let subresource_layers = vk::ImageSubresourceLayers::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_array_layer(0)
+            .layer_count(1)
+            .mip_level(0);
+
+        let image_blit = vk::ImageBlit::default()
+            .src_offsets(src_offsets)
+            .src_subresource(subresource_layers)
+            .dst_offsets(dst_offsets)
+            .dst_subresource(subresource_layers);
+
+        let regions = [image_blit];
+        self.device.cmd_blit_image(cmd, src_image, vk::ImageLayout::GENERAL, dst_image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &regions, vk::Filter::NEAREST);
         
-        let clear_to_present_layout_transition = vk::ImageMemoryBarrier2::default()
-            .old_layout(vk::ImageLayout::GENERAL)
+        let blit_dst_to_present_layout_transition = vk::ImageMemoryBarrier2::default()
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .src_access_mask(vk::AccessFlags2::SHADER_STORAGE_WRITE | vk::AccessFlags2::TRANSFER_WRITE)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
             .dst_access_mask(vk::AccessFlags2::MEMORY_READ)
             .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .dst_stage_mask(vk::PipelineStageFlags2::NONE)
             .src_queue_family_index(self.queue_family_index)
             .dst_queue_family_index(self.queue_family_index)
-            .image(image)
+            .image(dst_image)
             .subresource_range(subresource_range);
-        let image_memory_barriers = [clear_to_present_layout_transition];
+        let image_memory_barriers = [blit_dst_to_present_layout_transition];
         let dep = vk::DependencyInfo::default()
             .image_memory_barriers(&image_memory_barriers);
         self.device.cmd_pipeline_barrier2(cmd, &dep);
@@ -413,7 +481,8 @@ impl InternalApp {
         self.swapchain_loader.queue_present(self.queue, &present_info).unwrap();
         self.device.free_command_buffers(self.pool, &[cmd]);
 
-        self.device.destroy_image_view(image_view, None);
+        self.device.destroy_image_view(src_image_view, None);
+        self.device.destroy_image_view(dst_image_view, None);
         self.device.free_descriptor_sets(self.descriptor_pool, &descriptor_sets).unwrap();
     }
 
@@ -422,8 +491,9 @@ impl InternalApp {
         self.device.destroy_pipeline_layout(self.pipeline_layout, None);
         self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
         self.device.destroy_shader_module(self.compute_shader_module, None);
-
         self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+        log::info!("destroyed pipeline, layout, desc. set, shader module, and desc. pool");
+
 
         self.device.destroy_image_view(self.voxel_image_view, None);
         self.device.destroy_image(self.voxel_image, None);
@@ -440,6 +510,12 @@ impl InternalApp {
 
         self.surface_loader.destroy_surface(self.surface_khr, None);
         log::info!("destroyed surface");
+
+        for (image, allocation) in self.rt_images {
+            self.device.destroy_image(image, None);
+            self.allocator.free(allocation).unwrap();
+        }
+        log::info!("destroyed render target images");
 
         self.device.destroy_command_pool(self.pool, None);
         log::info!("destroyed cmd pool");

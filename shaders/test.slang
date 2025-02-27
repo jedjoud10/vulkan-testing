@@ -38,7 +38,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
 
     float3 ray_pos = position;
 
-    output[id.xy] = float4(0);
+    // TODO: for some reason creates artefacts?? am I missing a barrier??
+    //output[id.xy] = float4(0);
     for (int i = 0; i < 64; i++) {
         float dist = sdf(ray_pos);
         ray_pos += ray_dir * dist;
