@@ -43,7 +43,9 @@ impl Movement {
 
         self.rotation  = vek::Quaternion::rotation_y(summed_mouse.0 * 0.003 * sens) * vek::Quaternion::rotation_x(summed_mouse.1 * -0.003 * sens);
 
-        self.proj_matrix = vek::Mat4::<f32>::perspective_rh_no(horizontal_to_vertical(160f32, ratio), 16.0 / 9.0, 0.001f32, 1000f32);
+        let uhh = 1f32 / ratio;
+        // TODO: fix the weird radian fov?
+        self.proj_matrix = vek::Mat4::<f32>::perspective_rh_no(80.0f32.to_radians(), uhh, 0.001f32, 1000f32);
         let rot = vek::Mat4::from(self.rotation);
         
         let forward =  rot.mul_direction(-vek::Vec3::unit_z());

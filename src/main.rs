@@ -64,13 +64,17 @@ struct InternalApp {
     pipeline_layout: vk::PipelineLayout,
     compute_pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
+    allocator: gpu_allocator::vulkan::Allocator,
+    voxel_image: vk::Image,
+    voxel_image_view: vk::ImageView,
+    voxel_image_allocation: gpu_allocator::vulkan::Allocation,
 }
 
 impl InternalApp {
     pub unsafe fn new(event_loop: &ActiveEventLoop) -> Self {
         let mut assets = HashMap::<&str, Vec<u32>>::new();
-        asset!("test", assets);
-        let raw = &*assets["test"];
+        asset!("test.spv", assets);
+        let raw = &*assets["test.spv"];
 
         let window = event_loop.create_window(Window::default_attributes()).unwrap();
         window.set_cursor_grab(winit::window::CursorGrabMode::Confined).unwrap();
@@ -166,6 +170,58 @@ impl InternalApp {
 
         let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).unwrap();
 
+        const SIZE: u32 = 256;
+        let voxel_image_create_info = vk::ImageCreateInfo::default()
+            .extent(vk::Extent3D {
+                width: SIZE,
+                height: SIZE,
+                depth: SIZE,
+            })
+            .format(vk::Format::R8_UINT)
+            .image_type(vk::ImageType::TYPE_3D)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .mip_levels(1)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .usage(vk::ImageUsageFlags::STORAGE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .array_layers(1);
+        let voxel_image = device.create_image(&voxel_image_create_info, None).unwrap();
+        let requirements = device.get_image_memory_requirements(voxel_image);
+        
+        let mut allocator = gpu_allocator::vulkan::Allocator::new(&gpu_allocator::vulkan::AllocatorCreateDesc {
+            instance: instance.clone(),
+            device: device.clone(),
+            physical_device: physical_device.clone(),
+            debug_settings: gpu_allocator::AllocatorDebugSettings::default(),
+            buffer_device_address: false,
+            allocation_sizes: gpu_allocator::AllocationSizes::default(),
+        }).unwrap();
+
+        let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
+            name: "Voxel Image Allocation",
+            requirements: requirements,
+            linear: true,
+            allocation_scheme: gpu_allocator::vulkan::AllocationScheme::DedicatedImage(voxel_image),
+            location: gpu_allocator::MemoryLocation::GpuOnly,
+        }).unwrap();
+
+        let device_memory = allocation.memory();
+
+        device.bind_image_memory(voxel_image, device_memory, 0).unwrap();
+
+        let subresource_range = vk::ImageSubresourceRange::default()
+            .base_mip_level(0)
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_array_layer(0)
+            .layer_count(1)
+            .level_count(1);        
+        let voxel_image_view_create_info = vk::ImageViewCreateInfo::default()
+            .image(voxel_image)
+            .format(vk::Format::R8_UINT)
+            .view_type(vk::ImageViewType::TYPE_3D)
+            .subresource_range(subresource_range);
+        let voxel_image_view = device.create_image_view(&voxel_image_view_create_info, None).unwrap();
+
         Self {
             input: Default::default(),
             movement: Movement {
@@ -194,6 +250,10 @@ impl InternalApp {
             pipeline_layout,
             compute_pipeline,
             descriptor_pool,
+            allocator,
+            voxel_image,
+            voxel_image_view,
+            voxel_image_allocation: allocation,
         }
     }
 
@@ -303,7 +363,7 @@ impl InternalApp {
         let push_constants = PushConstants {
             screen_resolution: size,
             _padding: Default::default(),
-            matrix: self.movement.view_matrix,
+            matrix: self.movement.proj_matrix * self.movement.view_matrix,
             position: self.movement.position.with_w(0f32),
         };
 
@@ -357,18 +417,18 @@ impl InternalApp {
         self.device.free_descriptor_sets(self.descriptor_pool, &descriptor_sets).unwrap();
     }
 
-    pub unsafe fn destroy(self) {
-        if let Some((inst, debug_messenger)) = self.debug_messenger {
-            inst.destroy_debug_utils_messenger(debug_messenger, None);
-            log::info!("destroyed debug utils messenger");
-        }
-
+    pub unsafe fn destroy(mut self) {
         self.device.destroy_pipeline(self.compute_pipeline, None);
         self.device.destroy_pipeline_layout(self.pipeline_layout, None);
         self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
         self.device.destroy_shader_module(self.compute_shader_module, None);
 
         self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+
+        self.device.destroy_image_view(self.voxel_image_view, None);
+        self.device.destroy_image(self.voxel_image, None);
+        self.allocator.free(self.voxel_image_allocation).unwrap();
+        log::info!("destroyed voxel image");
 
         // TODO: Just cope with the error messages vro 
         self.device.wait_for_fences(&[self.end_fence], true, u64::MAX).unwrap();
@@ -386,6 +446,11 @@ impl InternalApp {
 
         self.device.destroy_device(None);
         log::info!("destroyed device");
+
+        if let Some((inst, debug_messenger)) = self.debug_messenger {
+            inst.destroy_debug_utils_messenger(debug_messenger, None);
+            log::info!("destroyed debug utils messenger");
+        }
 
         self.instance.destroy_instance(None);
         log::info!("destroyed instance");

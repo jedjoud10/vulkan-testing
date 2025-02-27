@@ -2,7 +2,7 @@ use std::{env, fs::File, io::Write, path::{Path, PathBuf}};
 
 use slang::Downcast;
 
-fn load_module(session: slang::Session, file_name: &str) {
+fn load_module(session: &mut slang::Session, file_name: &str) {
     let module = session.load_module(&format!("{file_name}.slang")).unwrap();
     let entry_point = module.find_entry_point_by_name("main").unwrap();
     
@@ -23,13 +23,12 @@ fn load_module(session: slang::Session, file_name: &str) {
     file.write(shader_bytecode.as_slice()).unwrap();
 
     let path_str = path.to_str().unwrap();
-    println!("cargo:rustc-env={file_name}={path_str}");
+    println!("cargo:rustc-env={file_name}.spv={path_str}");
     println!("cargo:warning=Compiled! {length} bytes, saved to {path_str}");
 }
 
 fn main() {
     println!("cargo:rerun-if-changed=shaders");
-
     let global_session = slang::GlobalSession::new().unwrap();
     let search_path = std::ffi::CString::new("shaders").unwrap();
 
@@ -49,6 +48,18 @@ fn main() {
     	.search_paths(&search_paths)
     	.options(&session_options);
 
-    let session = global_session.create_session(&session_desc).unwrap();
-    load_module(session, "test");
+    let mut session = global_session.create_session(&session_desc).unwrap();
+
+    let mut dir_path = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    dir_path.push("shaders");
+    let dir = std::fs::read_dir(dir_path).unwrap();
+
+    for x in dir {
+        if let Ok(entry) = x {
+            let file_name = entry.file_name().into_string().unwrap();
+            let file_name = file_name.split(".").next().unwrap();
+            load_module(&mut session, file_name);
+        }
+    }
+
 }

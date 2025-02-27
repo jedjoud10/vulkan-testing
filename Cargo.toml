@@ -12,7 +12,7 @@ ash = "0.38.0"
 vek = { version = "0.17.1", features = ["bytemuck"]}
 raw-window-handle = "0.6.2"
 ash-window = "0.13.0"
-gpu-allocator = { version = "0.21.0", features = ["vulkan"] }
+gpu-allocator = { version = "0.27.0", default-features = false, features = ["vulkan"] }
 env_logger = "0.10.0"
 log = "0.4.17"
 cfg-if = "1.0.0"

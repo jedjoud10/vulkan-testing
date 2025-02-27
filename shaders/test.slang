@@ -34,7 +34,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     uvs.y = -uvs.y;
     uvs.x = -uvs.x;
 
-    float3 ray_dir = normalize((mul(mat, float4(uvs, -1, 0))).xyz);
+    float3 ray_dir = normalize((mul(mat, float4(uvs, 1, 0))).xyz);
 
     float3 ray_pos = position;
 

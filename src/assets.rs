@@ -24,12 +24,12 @@ macro_rules! asset {
                 if #[cfg(debug_assertions)] {
                     {
                         $assets.insert($file, convert(damn(env!($file))));
-                        println!("Loading asset {} dynamically at runtime...", $file);
+                        log::info!("loading asset '{}' dynamically at runtime...", $file);
                     }
                 } else {
                     let bytes = include_bytes!(env!($file));
                     $assets.insert($file, convert(bytes.to_vec()));
-                    println!("Loading embedded asset {} from compile time...", $file);
+                    log::info!("loading embedded asset '{}' from compile time...", $file);
                 }
             }
         }
