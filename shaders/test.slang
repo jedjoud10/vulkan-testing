@@ -39,7 +39,9 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     float3 ray_pos = position;
 
     // TODO: for some reason creates artefacts?? am I missing a barrier??
-    //output[id.xy] = float4(0);
+    // output[id.xy] = float4(0);
+    float3 color = 0.0;
+    bool hit = false;
     for (int i = 0; i < 64; i++) {
         float dist = sdf(ray_pos);
         ray_pos += ray_dir * dist;
@@ -52,16 +54,20 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
         }
 
         if (dist < 0.1) {
-            float3 color = float3(ray_pos.xz, 0);
-            float3 temp;
-            color = ray_pos / 10.0;
-            //color = modf(color, float3(1, 1, 1)); 
-            output[id.xy] = float4(dot(normal(ray_pos), sun));
-            return;
+            hit = true;
+            color = float3(dot(normal(ray_pos), sun));
+            break;
         }
     }
 
-    output[id.xy] = float4(sky(ray_dir), 0);
+    if (!hit) {
+        color = sky(ray_dir);
+    }
 
-    
+    int depth = 5;
+    color = clamp(color, 0, 1);
+    uint3 compressed = (uint3)(color * (float)(1 << depth));
+    float3 converted = (float3)compressed / (float)(1 << depth);
+
+    output[id.xy] = float4(converted, 0);
 }
