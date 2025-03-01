@@ -1,6 +1,9 @@
 [[vk::binding(0, 0)]]
 RWTexture2D<float4> output;
 
+[[vk::binding(0, 1)]]
+Texture3D<uint> voxel;
+
 static const float3 sun = normalize(float3(1, 1, 1));
 
 [Differentiable]
@@ -35,14 +38,42 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     uvs.x = -uvs.x;
 
     float3 ray_dir = normalize((mul(mat, float4(uvs, 1, 0))).xyz);
-
     float3 ray_pos = position;
+    float3 floored_pos = floor(ray_pos);
+    float3 inv_dir = 1 / ray_dir;
+    float3 sign = sign(ray_dir);
+    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * sign);
+
 
     // TODO: for some reason creates artefacts?? am I missing a barrier??
     // output[id.xy] = float4(0);
     float3 color = 0.0;
     bool hit = false;
-    for (int i = 0; i < 64; i++) {
+    int face;
+    for (int i = 0; i < 128; i++) {
+        if (floored_pos.y < sin(floored_pos.x + floored_pos.z) * 2) {
+            /*
+            if (floored_pos.x < 0) {
+                hit = true;
+                color = (fmod(abs(floored_pos), 5)) / 5;
+                break;
+            } else {
+                ray_dir = reflect(ray_dir, float3(0, 1, 0));
+                ray_dir = normalize(ray_dir);
+            }
+            */
+            hit = true;
+            color = (float)face / 3;
+            break;
+        }
+
+        float3 reconst = side_dist * inv_dir;
+        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
+        face = firstbithigh(eqs.x | eqs.y << 1 | eqs.z << 2);
+        floored_pos += sign * eqs;
+        side_dist += sign * eqs;
+        
+        /*
         float dist = sdf(ray_pos);
         ray_pos += ray_dir * dist;
 
@@ -58,6 +89,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
             color = float3(dot(normal(ray_pos), sun));
             break;
         }
+        */
     }
 
     if (!hit) {

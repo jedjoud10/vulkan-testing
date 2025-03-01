@@ -61,10 +61,10 @@ struct InternalApp {
     queue: vk::Queue,
     queue_family_index: u32,
     pool: vk::CommandPool,
-    compute_shader_module: vk::ShaderModule,
-    descriptor_set_layout: vk::DescriptorSetLayout,
-    pipeline_layout: vk::PipelineLayout,
-    compute_pipeline: vk::Pipeline,
+    render_compute_shader_module: vk::ShaderModule,
+    render_compute_descriptor_set_layout: vk::DescriptorSetLayout,
+    render_compute_pipeline_layout: vk::PipelineLayout,
+    render_compute_pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
     allocator: gpu_allocator::vulkan::Allocator,
     voxel_image: vk::Image,
@@ -139,52 +139,8 @@ impl InternalApp {
         let end_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_fence = device.create_fence(&Default::default(), None).unwrap();
 
-        let compute_shader_module_create_info = vk::ShaderModuleCreateInfo::default()
-            .code(raw)
-            .flags(vk::ShaderModuleCreateFlags::empty());
-        let compute_shader_module = device.create_shader_module(&compute_shader_module_create_info, None).unwrap();
-
-        let compute_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
-            .flags(vk::PipelineShaderStageCreateFlags::empty())
-            .name(c"main")
-            .stage(vk::ShaderStageFlags::COMPUTE)
-            .module(compute_shader_module);
-
-        let descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .descriptor_count(1);
-        let descriptor_set_layout_bindings = [descriptor_set_layout_binding];
-
-        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::default()
-            .flags(vk::DescriptorSetLayoutCreateFlags::empty())
-            .bindings(&descriptor_set_layout_bindings);
-
-        let descriptor_set_layout = device.create_descriptor_set_layout(&descriptor_set_layout_create_info, None).unwrap();
-        let descriptor_set_layouts = [descriptor_set_layout];
-
-        let push_constant_range = vk::PushConstantRange::default()
-            .offset(0)
-            .size(size_of::<PushConstants>() as u32)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE);
-        let push_constants = [push_constant_range];
-
-        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .push_constant_ranges(&push_constants)
-            .flags(vk::PipelineLayoutCreateFlags::empty())
-            .set_layouts(&descriptor_set_layouts);
-
-        let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_create_info, None).unwrap();
-
-        let compute_pipeline_create_info = vk::ComputePipelineCreateInfo::default()
-            .layout(pipeline_layout)
-            .stage(compute_stage_create_info);
-        let compute_pipelines = device.create_compute_pipelines(vk::PipelineCache::null(), &[compute_pipeline_create_info], None).unwrap();
-        let compute_pipeline = compute_pipelines[0];
-
         let descriptor_pool_size = vk::DescriptorPoolSize::default()
-            .descriptor_count(1)
+            .descriptor_count(2)
             .ty(vk::DescriptorType::STORAGE_IMAGE);
         let descriptor_pool_sizes = [descriptor_pool_size]; 
 
@@ -195,14 +151,63 @@ impl InternalApp {
 
         let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).unwrap();
 
-        const SIZE: u32 = 256;
+        let render_compute_shader_module_create_info = vk::ShaderModuleCreateInfo::default()
+            .code(raw)
+            .flags(vk::ShaderModuleCreateFlags::empty());
+        let render_compute_shader_module = device.create_shader_module(&render_compute_shader_module_create_info, None).unwrap();
+
+        let render_compute_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
+            .flags(vk::PipelineShaderStageCreateFlags::empty())
+            .name(c"main")
+            .stage(vk::ShaderStageFlags::COMPUTE)
+            .module(render_compute_shader_module);
+
+        let render_descriptor_set_layout_binding_rt_image = vk::DescriptorSetLayoutBinding::default()
+            .binding(0)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_count(1);
+        let render_descriptor_set_layout_binding_voxel_image = vk::DescriptorSetLayoutBinding::default()
+            .binding(1)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_count(1);
+        let render_descriptor_set_layout_bindings = [render_descriptor_set_layout_binding_rt_image,render_descriptor_set_layout_binding_voxel_image];
+
+        let render_descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::default()
+            .flags(vk::DescriptorSetLayoutCreateFlags::empty())
+            .bindings(&render_descriptor_set_layout_bindings);
+
+        let render_compute_descriptor_set_layout = device.create_descriptor_set_layout(&render_descriptor_set_layout_create_info, None).unwrap();
+        let render_compute_descriptor_set_layouts = [render_compute_descriptor_set_layout];
+
+        let render_push_constant_range = vk::PushConstantRange::default()
+            .offset(0)
+            .size(size_of::<PushConstants>() as u32)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE);
+        let render_push_constants = [render_push_constant_range];
+
+        let render_compute_pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
+            .push_constant_ranges(&render_push_constants)
+            .flags(vk::PipelineLayoutCreateFlags::empty())
+            .set_layouts(&render_compute_descriptor_set_layouts);
+
+        let render_compute_pipeline_layout = device.create_pipeline_layout(&render_compute_pipeline_layout_create_info, None).unwrap();
+
+        let render_compute_pipeline_create_info = vk::ComputePipelineCreateInfo::default()
+            .layout(render_compute_pipeline_layout)
+            .stage(render_compute_stage_create_info);
+        let render_compute_pipelines = device.create_compute_pipelines(vk::PipelineCache::null(), &[render_compute_pipeline_create_info], None).unwrap();
+        let render_compute_pipeline = render_compute_pipelines[0];
+
+        const SIZE: u32 = 128;
         let voxel_image_create_info = vk::ImageCreateInfo::default()
             .extent(vk::Extent3D {
                 width: SIZE,
                 height: SIZE,
                 depth: SIZE,
             })
-            .format(vk::Format::R8_UINT)
+            .format(vk::Format::R32_UINT)
             .image_type(vk::ImageType::TYPE_3D)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .mip_levels(1)
@@ -233,7 +238,7 @@ impl InternalApp {
             .level_count(1);        
         let voxel_image_view_create_info = vk::ImageViewCreateInfo::default()
             .image(voxel_image)
-            .format(vk::Format::R8_UINT)
+            .format(vk::Format::R32_UINT)
             .view_type(vk::ImageViewType::TYPE_3D)
             .subresource_range(subresource_range);
         let voxel_image_view = device.create_image_view(&voxel_image_view_create_info, None).unwrap();
@@ -261,10 +266,10 @@ impl InternalApp {
             end_fence,
             queue,
             pool,
-            compute_shader_module,
-            descriptor_set_layout,
-            pipeline_layout,
-            compute_pipeline,
+            render_compute_shader_module,
+            render_compute_descriptor_set_layout,
+            render_compute_pipeline_layout,
+            render_compute_pipeline,
             descriptor_pool,
             allocator,
             voxel_image,
@@ -368,30 +373,41 @@ impl InternalApp {
             }, &[subresource_range]);
         */
 
-        let layouts = [self.descriptor_set_layout];
+        let layouts = [self.render_compute_descriptor_set_layout];
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.descriptor_pool)
             .set_layouts(&layouts);
         let descriptor_sets = self.device.allocate_descriptor_sets(&descriptor_set_allocate_info).unwrap();
         let descriptor_set = descriptor_sets[0];
 
-        let descriptor_image_info = vk::DescriptorImageInfo::default()
+        let descriptor_rt_image_info = vk::DescriptorImageInfo::default()
             .image_view(src_image_view)
             .image_layout(vk::ImageLayout::GENERAL)
             .sampler(vk::Sampler::null());
-        let descriptor_image_infos = [descriptor_image_info];
+        let descriptor_voxel_image_info = vk::DescriptorImageInfo::default()
+            .image_view(self.voxel_image_view)
+            .image_layout(vk::ImageLayout::GENERAL)
+            .sampler(vk::Sampler::null());
+        let descriptor_rt_image_infos = [descriptor_rt_image_info];
+        let descriptor_voxel_image_infos = [descriptor_voxel_image_info];
 
-        let descriptor_write = vk::WriteDescriptorSet::default()
+        let first_descriptor_write = vk::WriteDescriptorSet::default()
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
             .dst_binding(0)
             .dst_set(descriptor_set)
-            .image_info(&descriptor_image_infos);
+            .image_info(&descriptor_rt_image_infos);
+        let second_descriptor_write = vk::WriteDescriptorSet::default()
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .dst_binding(1)
+            .dst_set(descriptor_set)
+            .image_info(&descriptor_voxel_image_infos);
 
-        self.device.update_descriptor_sets(&[descriptor_write], &[]);
+        self.device.update_descriptor_sets(&[first_descriptor_write, second_descriptor_write], &[]);
         
-        self.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::COMPUTE, self.pipeline_layout, 0, &descriptor_sets, &[]);
-        self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute_pipeline);
+        self.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::COMPUTE, self.render_compute_pipeline_layout, 0, &descriptor_sets, &[]);
+        self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.render_compute_pipeline);
 
         let size = self.window.inner_size();
         let size = vek::Vec2::<u32>::new(size.width, size.height).map(|val| val / swapchain::SCALING_FACTOR);
@@ -410,7 +426,7 @@ impl InternalApp {
 
         let raw = bytemuck::bytes_of(&push_constants);
 
-        self.device.cmd_push_constants(cmd, self.pipeline_layout, vk::ShaderStageFlags::COMPUTE, 0, raw);
+        self.device.cmd_push_constants(cmd, self.render_compute_pipeline_layout, vk::ShaderStageFlags::COMPUTE, 0, raw);
         self.device.cmd_dispatch(cmd, width_group_size, height_group_size, 1);
 
         let origin_offset = vk::Offset3D::default();
@@ -487,10 +503,10 @@ impl InternalApp {
     }
 
     pub unsafe fn destroy(mut self) {
-        self.device.destroy_pipeline(self.compute_pipeline, None);
-        self.device.destroy_pipeline_layout(self.pipeline_layout, None);
-        self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
-        self.device.destroy_shader_module(self.compute_shader_module, None);
+        self.device.destroy_pipeline(self.render_compute_pipeline, None);
+        self.device.destroy_pipeline_layout(self.render_compute_pipeline_layout, None);
+        self.device.destroy_descriptor_set_layout(self.render_compute_descriptor_set_layout, None);
+        self.device.destroy_shader_module(self.render_compute_shader_module, None);
         self.device.destroy_descriptor_pool(self.descriptor_pool, None);
         log::info!("destroyed pipeline, layout, desc. set, shader module, and desc. pool");
 

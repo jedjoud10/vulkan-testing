@@ -1,9 +1,9 @@
 use std::{fs::File, io::{BufReader, Read}, mem::ManuallyDrop, path::Path};
 
 pub fn damn<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    let _raymarch = File::open(path).unwrap();
+    let file = File::open(path).unwrap();
     let mut bytes = Vec::<u8>::new();
-    BufReader::new(_raymarch).read_to_end(&mut bytes).unwrap();
+    BufReader::new(file).read_to_end(&mut bytes).unwrap();
     return bytes;
 }
 
