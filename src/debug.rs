@@ -1,8 +1,5 @@
 use ash::vk::{self};
-use std::{
-    borrow::Cow,
-    ffi::{c_void, CStr},
-};
+use std::ffi::{c_void, CStr};
 
 #[cfg(debug_assertions)]
 pub unsafe fn create_debug_messenger_create_info(
@@ -31,7 +28,6 @@ pub unsafe fn create_debug_messenger(entry: &ash::Entry, instance: &ash::Instanc
                 None,
             )
             .unwrap();
-        //debug_utils.submit_debug_utils_message(DebugUtilsMessageSeverityFlagsEXT::ERROR, DebugUtilsMessageTypeFlagsEXT::GENERAL, &DebugUtilsMessengerCallbackDataEXT::default().message(c"amogus"));
         debug_messenger = Some((debug_utils, messenger));
     }
     #[cfg(not(debug_assertions))]
@@ -54,18 +50,16 @@ pub unsafe extern "system" fn debug_callback(
     let message_id_number: i32 =
         callback_data.message_id_number as i32;
 
-    let message_id_name = if callback_data.p_message_id_name.is_null()
-    {
-        Cow::from("")
+    let message_id_name = if callback_data.p_message_id_name.is_null() {
+        c""
     } else {
         CStr::from_ptr(callback_data.p_message_id_name)
-            .to_string_lossy()
     };
 
     let message = if callback_data.p_message.is_null() {
-        Cow::from("")
+        c""
     } else {
-        CStr::from_ptr(callback_data.p_message).to_string_lossy()
+        CStr::from_ptr(callback_data.p_message)
     };
 
     pub const VERBOSE: u32 = 0b1;
@@ -77,30 +71,30 @@ pub unsafe extern "system" fn debug_callback(
         VERBOSE => log::debug!(
             "{:?} [{} ({})] : {}\n",
             message_type,
-            message_id_name,
+            message_id_name.to_str().unwrap(),
             &message_id_number.to_string(),
-            message,
+            message.to_str().unwrap(),
         ),
-        INFO => log::debug!(
+        INFO => log::info!(
             "{:?} [{} ({})] : {}\n",
             message_type,
-            message_id_name,
+            message_id_name.to_str().unwrap(),
             &message_id_number.to_string(),
-            message,
+            message.to_str().unwrap(),
         ),
         WARNING => log::warn!(
             "{:?} [{} ({})] : {}\n",
             message_type,
-            message_id_name,
+            message_id_name.to_str().unwrap(),
             &message_id_number.to_string(),
-            message,
+            message.to_str().unwrap(),
         ),
         ERROR => log::error!(
             "{:?} [{} ({})] : {}\n",
             message_type,
-            message_id_name,
+            message_id_name.to_str().unwrap(),
             &message_id_number.to_string(),
-            message,
+            message.to_str().unwrap(),
         ),
         _ => {}
     }

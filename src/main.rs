@@ -12,6 +12,9 @@ mod physical_device;
 mod queue;
 mod input;
 mod movement;
+mod voxel;
+mod pool;
+mod pipeline;
 
 
 use bytemuck::Pod;
@@ -139,109 +142,11 @@ impl InternalApp {
         let end_semaphore = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap();
         let end_fence = device.create_fence(&Default::default(), None).unwrap();
 
-        let descriptor_pool_size = vk::DescriptorPoolSize::default()
-            .descriptor_count(2)
-            .ty(vk::DescriptorType::STORAGE_IMAGE);
-        let descriptor_pool_sizes = [descriptor_pool_size]; 
+        let descriptor_pool = pool::create_descriptor_pool(&device);
 
-        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
-            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
-            .max_sets(1)
-            .pool_sizes(&descriptor_pool_sizes);
+        let (render_compute_shader_module, render_compute_descriptor_set_layout, render_compute_pipeline_layout, render_compute_pipeline) = pipeline::create_compute_pipeline(raw, &device, size_of::<PushConstants>() as u32);
 
-        let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).unwrap();
-
-        let render_compute_shader_module_create_info = vk::ShaderModuleCreateInfo::default()
-            .code(raw)
-            .flags(vk::ShaderModuleCreateFlags::empty());
-        let render_compute_shader_module = device.create_shader_module(&render_compute_shader_module_create_info, None).unwrap();
-
-        let render_compute_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
-            .flags(vk::PipelineShaderStageCreateFlags::empty())
-            .name(c"main")
-            .stage(vk::ShaderStageFlags::COMPUTE)
-            .module(render_compute_shader_module);
-
-        let render_descriptor_set_layout_binding_rt_image = vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .descriptor_count(1);
-        let render_descriptor_set_layout_binding_voxel_image = vk::DescriptorSetLayoutBinding::default()
-            .binding(1)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-            .descriptor_count(1);
-        let render_descriptor_set_layout_bindings = [render_descriptor_set_layout_binding_rt_image,render_descriptor_set_layout_binding_voxel_image];
-
-        let render_descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::default()
-            .flags(vk::DescriptorSetLayoutCreateFlags::empty())
-            .bindings(&render_descriptor_set_layout_bindings);
-
-        let render_compute_descriptor_set_layout = device.create_descriptor_set_layout(&render_descriptor_set_layout_create_info, None).unwrap();
-        let render_compute_descriptor_set_layouts = [render_compute_descriptor_set_layout];
-
-        let render_push_constant_range = vk::PushConstantRange::default()
-            .offset(0)
-            .size(size_of::<PushConstants>() as u32)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE);
-        let render_push_constants = [render_push_constant_range];
-
-        let render_compute_pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .push_constant_ranges(&render_push_constants)
-            .flags(vk::PipelineLayoutCreateFlags::empty())
-            .set_layouts(&render_compute_descriptor_set_layouts);
-
-        let render_compute_pipeline_layout = device.create_pipeline_layout(&render_compute_pipeline_layout_create_info, None).unwrap();
-
-        let render_compute_pipeline_create_info = vk::ComputePipelineCreateInfo::default()
-            .layout(render_compute_pipeline_layout)
-            .stage(render_compute_stage_create_info);
-        let render_compute_pipelines = device.create_compute_pipelines(vk::PipelineCache::null(), &[render_compute_pipeline_create_info], None).unwrap();
-        let render_compute_pipeline = render_compute_pipelines[0];
-
-        const SIZE: u32 = 128;
-        let voxel_image_create_info = vk::ImageCreateInfo::default()
-            .extent(vk::Extent3D {
-                width: SIZE,
-                height: SIZE,
-                depth: SIZE,
-            })
-            .format(vk::Format::R32_UINT)
-            .image_type(vk::ImageType::TYPE_3D)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .mip_levels(1)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .usage(vk::ImageUsageFlags::STORAGE)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .array_layers(1);
-        let voxel_image = device.create_image(&voxel_image_create_info, None).unwrap();
-        let requirements = device.get_image_memory_requirements(voxel_image);
-
-        let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
-            name: "Voxel Image Allocation",
-            requirements: requirements,
-            linear: true,
-            allocation_scheme: gpu_allocator::vulkan::AllocationScheme::DedicatedImage(voxel_image),
-            location: gpu_allocator::MemoryLocation::GpuOnly,
-        }).unwrap();
-
-        let device_memory = allocation.memory();
-
-        device.bind_image_memory(voxel_image, device_memory, 0).unwrap();
-
-        let subresource_range = vk::ImageSubresourceRange::default()
-            .base_mip_level(0)
-            .aspect_mask(vk::ImageAspectFlags::COLOR)
-            .base_array_layer(0)
-            .layer_count(1)
-            .level_count(1);        
-        let voxel_image_view_create_info = vk::ImageViewCreateInfo::default()
-            .image(voxel_image)
-            .format(vk::Format::R32_UINT)
-            .view_type(vk::ImageViewType::TYPE_3D)
-            .subresource_range(subresource_range);
-        let voxel_image_view = device.create_image_view(&voxel_image_view_create_info, None).unwrap();
+        let (voxel_image, allocation, voxel_image_view) = voxel::create_voxel_image(&device, &mut allocator);
 
         Self {
             input: Default::default(),
@@ -548,6 +453,10 @@ impl InternalApp {
         log::info!("destroyed instance");
     }
 }
+
+
+
+
 
 struct App {
     internal: Option<InternalApp>,

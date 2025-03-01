@@ -1,3 +1,4 @@
+use vek::Clamp;
 use winit::{event::ElementState, keyboard::{KeyCode, PhysicalKey}};
 use crate::input::{Axis, Input, MouseAxis};
 
@@ -8,7 +9,9 @@ pub struct Movement {
     pub proj_matrix: vek::Mat4<f32>,
     pub view_matrix: vek::Mat4<f32>,
 
+    pub summed_mouse: vek::Vec2<f32>,
     pub local_velocity: vek::Vec2<f32>,
+    pub velocity: vek::Vec3<f32>,
     pub boost: f32,
 }
 
@@ -39,9 +42,9 @@ impl Movement {
         self.boost += input.get_axis(Axis::Mouse(MouseAxis::ScrollDelta));
         self.boost = self.boost.clamp(0.0, 5.0);
         let sens = 1.0f32;
-        let summed_mouse = (input.get_axis(Axis::Mouse(MouseAxis::PositionX)), input.get_axis(Axis::Mouse(MouseAxis::PositionY)));
-
-        self.rotation  = vek::Quaternion::rotation_y(summed_mouse.0 * 0.003 * sens) * vek::Quaternion::rotation_x(summed_mouse.1 * -0.003 * sens);
+        let summed_mouse_target = vek::Vec2::new(input.get_axis(Axis::Mouse(MouseAxis::PositionX))* 0.003 * sens, input.get_axis(Axis::Mouse(MouseAxis::PositionY))* -0.003 * sens);
+        self.summed_mouse = vek::Vec2::lerp(self.summed_mouse, summed_mouse_target, (40f32 * delta).clamped01());
+        self.rotation = vek::Quaternion::rotation_y(self.summed_mouse.x) * vek::Quaternion::rotation_x(self.summed_mouse.y);
 
         let uhh = 1f32 / ratio;
         // TODO: fix the weird radian fov?
@@ -54,7 +57,9 @@ impl Movement {
         self.view_matrix = vek::Mat4::look_at_rh(self.position, forward + self.position, up);
 
         let velocity = forward * self.local_velocity.y + right * self.local_velocity.x;
-        self.position += velocity * delta * 3.0f32 * speed;
+        self.velocity = vek::Vec3::lerp(self.velocity, velocity * 3.0f32 * speed, (40f32 * delta).clamped01());
+
+        self.position += self.velocity * delta;
     }
 }
 
