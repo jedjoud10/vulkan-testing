@@ -1,6 +1,9 @@
-use vek::Clamp;
-use winit::{event::ElementState, keyboard::{KeyCode, PhysicalKey}};
 use crate::input::{Axis, Input, MouseAxis};
+use vek::Clamp;
+use winit::{
+    event::ElementState,
+    keyboard::{KeyCode, PhysicalKey},
+};
 
 #[derive(Default)]
 pub struct Movement {
@@ -25,7 +28,7 @@ impl Movement {
         } else {
             1.0f32
         };
-        
+
         if input.get_button(KeyCode::KeyW).held() {
             self.local_velocity.y = 1f32;
         } else if input.get_button(KeyCode::KeyS).held() {
@@ -38,26 +41,38 @@ impl Movement {
             self.local_velocity.x = -1f32;
         }
 
-
         self.boost += input.get_axis(Axis::Mouse(MouseAxis::ScrollDelta));
         self.boost = self.boost.clamp(0.0, 5.0);
         let sens = 1.0f32;
-        let summed_mouse_target = vek::Vec2::new(input.get_axis(Axis::Mouse(MouseAxis::PositionX))* 0.003 * sens, input.get_axis(Axis::Mouse(MouseAxis::PositionY))* -0.003 * sens);
-        self.summed_mouse = vek::Vec2::lerp(self.summed_mouse, summed_mouse_target, (40f32 * delta).clamped01());
-        self.rotation = vek::Quaternion::rotation_y(self.summed_mouse.x) * vek::Quaternion::rotation_x(self.summed_mouse.y);
+        let summed_mouse_target = vek::Vec2::new(
+            input.get_axis(Axis::Mouse(MouseAxis::PositionX)) * 0.003 * sens,
+            input.get_axis(Axis::Mouse(MouseAxis::PositionY)) * -0.003 * sens,
+        );
+        self.summed_mouse = vek::Vec2::lerp(
+            self.summed_mouse,
+            summed_mouse_target,
+            (40f32 * delta).clamped01(),
+        );
+        self.rotation = vek::Quaternion::rotation_y(self.summed_mouse.x)
+            * vek::Quaternion::rotation_x(self.summed_mouse.y);
 
         let uhh = 1f32 / ratio;
         // TODO: fix the weird radian fov?
-        self.proj_matrix = vek::Mat4::<f32>::perspective_rh_no(80.0f32.to_radians(), uhh, 0.001f32, 1000f32);
+        self.proj_matrix =
+            vek::Mat4::<f32>::perspective_rh_no(80.0f32.to_radians(), uhh, 0.001f32, 1000f32);
         let rot = vek::Mat4::from(self.rotation);
-        
-        let forward =  rot.mul_direction(-vek::Vec3::unit_z());
+
+        let forward = rot.mul_direction(-vek::Vec3::unit_z());
         let right = rot.mul_direction(vek::Vec3::unit_x());
         let up = rot.mul_direction(vek::Vec3::unit_y());
         self.view_matrix = vek::Mat4::look_at_rh(self.position, forward + self.position, up);
 
         let velocity = forward * self.local_velocity.y + right * self.local_velocity.x;
-        self.velocity = vek::Vec3::lerp(self.velocity, velocity * 3.0f32 * speed, (40f32 * delta).clamped01());
+        self.velocity = vek::Vec3::lerp(
+            self.velocity,
+            velocity * 3.0f32 * speed,
+            (40f32 * delta).clamped01(),
+        );
 
         self.position += self.velocity * delta;
     }

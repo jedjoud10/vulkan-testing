@@ -1,20 +1,28 @@
-use std::{env, fs::File, io::Write, path::{Path, PathBuf}};
+use std::{
+    env,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use slang::Downcast;
 
 fn load_module(session: &mut slang::Session, file_name: &str) {
     let module = session.load_module(&format!("{file_name}.slang")).unwrap();
     let entry_point = module.find_entry_point_by_name("main").unwrap();
-    
-    let program = session.create_composite_component_type(&[
-        module.downcast().clone(), entry_point.downcast().clone(),
-    ]).unwrap();
-    
+
+    let program = session
+        .create_composite_component_type(&[
+            module.downcast().clone(),
+            entry_point.downcast().clone(),
+        ])
+        .unwrap();
+
     let linked_program = program.link().unwrap();
     let shader_bytecode = linked_program.entry_point_code(0, 0).unwrap();
     let raw = shader_bytecode.as_slice();
     let length = raw.len();
-    
+
     let out_dir = env::var("OUT_DIR").unwrap();
     let mut path = PathBuf::from(out_dir);
     path.push(format!("{file_name}.spv"));
@@ -34,19 +42,18 @@ fn main() {
 
     // All compiler options are available through this builder.
     let session_options = slang::CompilerOptions::default()
-    	.optimization(slang::OptimizationLevel::High)
-    	.matrix_layout_row(true);
+        .optimization(slang::OptimizationLevel::High)
+        .matrix_layout_row(true);
 
-    let target_desc = slang::TargetDesc::default()
-    	.format(slang::CompileTarget::Spirv);
+    let target_desc = slang::TargetDesc::default().format(slang::CompileTarget::Spirv);
 
     let targets = [target_desc];
     let search_paths = [search_path.as_ptr()];
 
     let session_desc = slang::SessionDesc::default()
-    	.targets(&targets)
-    	.search_paths(&search_paths)
-    	.options(&session_options);
+        .targets(&targets)
+        .search_paths(&search_paths)
+        .options(&session_options);
 
     let mut session = global_session.create_session(&session_desc).unwrap();
 
@@ -61,5 +68,4 @@ fn main() {
             load_module(&mut session, file_name);
         }
     }
-
 }

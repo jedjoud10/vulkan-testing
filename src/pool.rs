@@ -11,6 +11,8 @@ pub unsafe fn create_descriptor_pool(device: &ash::Device) -> vk::DescriptorPool
         .max_sets(1)
         .pool_sizes(&descriptor_pool_sizes);
 
-    let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).unwrap();
+    let descriptor_pool = device
+        .create_descriptor_pool(&descriptor_pool_create_info, None)
+        .unwrap();
     descriptor_pool
 }

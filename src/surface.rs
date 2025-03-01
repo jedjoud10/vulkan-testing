@@ -1,5 +1,5 @@
-use ash::*;
 use ash::vk;
+use ash::*;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::Window;
 

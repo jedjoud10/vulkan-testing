@@ -3,17 +3,18 @@ use std::ffi::CStr;
 use ash::vk;
 use raw_window_handle::RawDisplayHandle;
 
-const REQUIRED_INSTANCE_EXTENSIONS: &'static [&'static CStr] = &[
-    ash::ext::debug_utils::NAME,
-    ash::khr::surface::NAME,
-];
+const REQUIRED_INSTANCE_EXTENSIONS: &'static [&'static CStr] =
+    &[ash::ext::debug_utils::NAME, ash::khr::surface::NAME];
 
 const REQUIRED_INSTANCE_VALIDATION_LAYERS: &'static [&'static CStr] = &[
     #[cfg(debug_assertions)]
     c"VK_LAYER_KHRONOS_validation",
 ];
 
-pub unsafe fn create_instance(entry: &ash::Entry, raw_display_handle: RawDisplayHandle) -> ash::Instance {
+pub unsafe fn create_instance(
+    entry: &ash::Entry,
+    raw_display_handle: RawDisplayHandle,
+) -> ash::Instance {
     let app_info = vk::ApplicationInfo::default()
         .application_name(c"Test Vulkan App")
         .api_version(vk::API_VERSION_1_3)
@@ -21,14 +22,11 @@ pub unsafe fn create_instance(entry: &ash::Entry, raw_display_handle: RawDisplay
         .engine_version(0)
         .engine_name(c"Unnamed");
 
-    let mut extension_names_ptrs =
-        ash_window::enumerate_required_extensions(raw_display_handle)
+    let mut extension_names_ptrs = ash_window::enumerate_required_extensions(raw_display_handle)
         .unwrap()
         .to_vec();
 
-    extension_names_ptrs.extend(
-        REQUIRED_INSTANCE_EXTENSIONS.iter().map(|s| s.as_ptr()),
-    );
+    extension_names_ptrs.extend(REQUIRED_INSTANCE_EXTENSIONS.iter().map(|s| s.as_ptr()));
 
     let validation_ptrs = REQUIRED_INSTANCE_VALIDATION_LAYERS
         .iter()

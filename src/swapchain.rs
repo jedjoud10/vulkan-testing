@@ -1,6 +1,5 @@
 use ash::vk;
 
-
 pub unsafe fn create_swapchain(
     instance: &ash::Instance,
     surface_loader: &ash::khr::surface::Instance,
@@ -8,16 +7,28 @@ pub unsafe fn create_swapchain(
     physical_device: vk::PhysicalDevice,
     device: &ash::Device,
     extent: vk::Extent2D,
-) -> (ash::khr::swapchain::Device, vk::SwapchainKHR, Vec<vk::Image>) {
-    let surface_capabilities =  surface_loader.get_physical_device_surface_capabilities(physical_device, surface_khr).unwrap();
-    let present_modes: Vec<vk::PresentModeKHR> = surface_loader.get_physical_device_surface_present_modes(physical_device, surface_khr).unwrap();
-    let surface_formats: Vec<vk::SurfaceFormatKHR> = surface_loader.get_physical_device_surface_formats(physical_device, surface_khr).unwrap();
-    let present = present_modes.iter().copied().find(|&x| x == vk::PresentModeKHR::IMMEDIATE || x == vk::PresentModeKHR::MAILBOX).unwrap();
+) -> (
+    ash::khr::swapchain::Device,
+    vk::SwapchainKHR,
+    Vec<vk::Image>,
+) {
+    let surface_capabilities = surface_loader
+        .get_physical_device_surface_capabilities(physical_device, surface_khr)
+        .unwrap();
+    let present_modes: Vec<vk::PresentModeKHR> = surface_loader
+        .get_physical_device_surface_present_modes(physical_device, surface_khr)
+        .unwrap();
+    let surface_formats: Vec<vk::SurfaceFormatKHR> = surface_loader
+        .get_physical_device_surface_formats(physical_device, surface_khr)
+        .unwrap();
+    let present = present_modes
+        .iter()
+        .copied()
+        .find(|&x| x == vk::PresentModeKHR::IMMEDIATE || x == vk::PresentModeKHR::MAILBOX)
+        .unwrap();
     let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
         .surface(surface_khr)
-        .min_image_count(
-            surface_capabilities.min_image_count,
-        )
+        .min_image_count(surface_capabilities.min_image_count)
         .image_format(surface_formats[0].format)
         .image_color_space(surface_formats[0].color_space)
         .image_extent(extent)
@@ -26,7 +37,8 @@ pub unsafe fn create_swapchain(
         .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
         .image_usage(
             vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::STORAGE,
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::STORAGE,
         )
         .clipped(true)
         .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -34,7 +46,9 @@ pub unsafe fn create_swapchain(
         .present_mode(present);
 
     let swapchain_loader = ash::khr::swapchain::Device::new(instance, device);
-    let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
+    let swapchain = swapchain_loader
+        .create_swapchain(&swapchain_create_info, None)
+        .unwrap();
     let images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
     (swapchain_loader, swapchain, images)
 }
@@ -50,9 +64,11 @@ pub unsafe fn create_temporary_target_render_texture(
     allocator: &mut gpu_allocator::vulkan::Allocator,
     queue_family_index: u32,
     extent: vk::Extent2D,
-) -> (vk::Image, gpu_allocator::vulkan::Allocation)  {
+) -> (vk::Image, gpu_allocator::vulkan::Allocation) {
     let queue_family_indices = [queue_family_index];
-    let surface_formats: Vec<vk::SurfaceFormatKHR> = surface_loader.get_physical_device_surface_formats(physical_device, surface_khr).unwrap();
+    let surface_formats: Vec<vk::SurfaceFormatKHR> = surface_loader
+        .get_physical_device_surface_formats(physical_device, surface_khr)
+        .unwrap();
     let rt_image_create_info = vk::ImageCreateInfo::default()
         .extent(vk::Extent3D {
             width: extent.width / SCALING_FACTOR,
@@ -71,17 +87,21 @@ pub unsafe fn create_temporary_target_render_texture(
         .array_layers(1);
     let rt_image = device.create_image(&rt_image_create_info, None).unwrap();
     let requirements = device.get_image_memory_requirements(rt_image);
-    
-    let allocation = allocator.allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
-        name: "Render Texture Image Allocation",
-        requirements: requirements,
-        linear: true,
-        allocation_scheme: gpu_allocator::vulkan::AllocationScheme::DedicatedImage(rt_image),
-        location: gpu_allocator::MemoryLocation::GpuOnly,
-    }).unwrap();
+
+    let allocation = allocator
+        .allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
+            name: "Render Texture Image Allocation",
+            requirements: requirements,
+            linear: true,
+            allocation_scheme: gpu_allocator::vulkan::AllocationScheme::DedicatedImage(rt_image),
+            location: gpu_allocator::MemoryLocation::GpuOnly,
+        })
+        .unwrap();
 
     let device_memory = allocation.memory();
-    device.bind_image_memory(rt_image, device_memory, 0).unwrap();
+    device
+        .bind_image_memory(rt_image, device_memory, 0)
+        .unwrap();
 
     (rt_image, allocation)
 }
@@ -92,16 +112,20 @@ pub unsafe fn transfer_rt_images(
     images: &[(vk::Image, gpu_allocator::vulkan::Allocation)],
     pool: vk::CommandPool,
     queue: vk::Queue,
-) { 
+) {
     let cmd_buffer_create_info = vk::CommandBufferAllocateInfo::default()
         .command_buffer_count(1)
         .level(vk::CommandBufferLevel::PRIMARY)
         .command_pool(pool);
-    let cmd = device.allocate_command_buffers(&cmd_buffer_create_info).unwrap()[0];
-    
-    let cmd_buffer_begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    device.begin_command_buffer(cmd, &cmd_buffer_begin_info).unwrap();
-    
+    let cmd = device
+        .allocate_command_buffers(&cmd_buffer_create_info)
+        .unwrap()[0];
+
+    let cmd_buffer_begin_info =
+        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+    device
+        .begin_command_buffer(cmd, &cmd_buffer_begin_info)
+        .unwrap();
 
     let subresource_range = vk::ImageSubresourceRange::default()
         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -113,7 +137,11 @@ pub unsafe fn transfer_rt_images(
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::GENERAL)
             .src_access_mask(vk::AccessFlags2::NONE)
-            .dst_access_mask(vk::AccessFlags2::TRANSFER_READ | vk::AccessFlags2::SHADER_WRITE | vk::AccessFlags2::SHADER_STORAGE_WRITE)
+            .dst_access_mask(
+                vk::AccessFlags2::TRANSFER_READ
+                    | vk::AccessFlags2::SHADER_WRITE
+                    | vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            )
             .src_stage_mask(vk::PipelineStageFlags2::NONE)
             .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
             .src_queue_family_index(queue_family_index)
@@ -123,12 +151,11 @@ pub unsafe fn transfer_rt_images(
     });
 
     let barriers = barriers.collect::<Vec<_>>();
-    let dep = vk::DependencyInfo::default()
-        .image_memory_barriers(&barriers);
+    let dep = vk::DependencyInfo::default().image_memory_barriers(&barriers);
     device.cmd_pipeline_barrier2(cmd, &dep);
 
     device.end_command_buffer(cmd).unwrap();
-    
+
     let cmds = [cmd];
     //let wait_masks = [vk::PipelineStageFlags::ALL_COMMANDS | vk::PipelineStageFlags::ALL_GRAPHICS];
     let submit_info = vk::SubmitInfo::default()

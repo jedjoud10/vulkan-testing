@@ -35,7 +35,10 @@ impl From<MouseAxis> for Axis {
 
 use std::collections::{hash_map::Entry, HashMap};
 
-use winit::{event::{DeviceEvent, ElementState, KeyEvent, WindowEvent}, keyboard::PhysicalKey};
+use winit::{
+    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
+    keyboard::PhysicalKey,
+};
 
 /// The current state of any key / button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,7 +215,6 @@ impl Input {
     }
 }
 
-
 // Winit window event since it seems that DeviceEvent::Key is broken on other machines
 // TODO: Report bug
 pub fn window_event(input: &mut Input, ev: &WindowEvent) {
@@ -235,7 +237,20 @@ pub fn window_event(input: &mut Input, ev: &WindowEvent) {
 
     match ev {
         // Handles keyboard keys
-        WindowEvent::KeyboardInput { device_id, event: KeyEvent { physical_key: PhysicalKey::Code(code), logical_key, text, location, state, repeat, .. }, is_synthetic } => {
+        WindowEvent::KeyboardInput {
+            device_id,
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(code),
+                    logical_key,
+                    text,
+                    location,
+                    state,
+                    repeat,
+                    ..
+                },
+            is_synthetic,
+        } => {
             handle_button_input(input, Button::Keyboard(*code), *state);
         }
 

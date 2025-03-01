@@ -2,8 +2,8 @@ use ash::vk::{self};
 use std::ffi::{c_void, CStr};
 
 #[cfg(debug_assertions)]
-pub unsafe fn create_debug_messenger_create_info(
-) -> vk::DebugUtilsMessengerCreateInfoEXT<'static> {
+pub unsafe fn create_debug_messenger_create_info() -> vk::DebugUtilsMessengerCreateInfoEXT<'static>
+{
     vk::DebugUtilsMessengerCreateInfoEXT::default()
         .message_severity(
             vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
@@ -17,16 +17,19 @@ pub unsafe fn create_debug_messenger_create_info(
         .pfn_user_callback(Some(debug_callback))
 }
 
-pub unsafe fn create_debug_messenger(entry: &ash::Entry, instance: &ash::Instance) -> Option<(ash::ext::debug_utils::Instance, ash::vk::DebugUtilsMessengerEXT)> {
+pub unsafe fn create_debug_messenger(
+    entry: &ash::Entry,
+    instance: &ash::Instance,
+) -> Option<(
+    ash::ext::debug_utils::Instance,
+    ash::vk::DebugUtilsMessengerEXT,
+)> {
     let debug_messenger;
     #[cfg(debug_assertions)]
     {
         let debug_utils = ash::ext::debug_utils::Instance::new(&entry, &instance);
         let messenger = debug_utils
-            .create_debug_utils_messenger(
-                &create_debug_messenger_create_info(),
-                None,
-            )
+            .create_debug_utils_messenger(&create_debug_messenger_create_info(), None)
             .unwrap();
         debug_messenger = Some((debug_utils, messenger));
     }
@@ -34,7 +37,6 @@ pub unsafe fn create_debug_messenger(entry: &ash::Entry, instance: &ash::Instanc
     {
         debug_messenger = None;
     }
-
 
     debug_messenger
 }
@@ -47,8 +49,7 @@ pub unsafe extern "system" fn debug_callback(
     _cvoid: *mut c_void,
 ) -> u32 {
     let callback_data = *p_callback_data;
-    let message_id_number: i32 =
-        callback_data.message_id_number as i32;
+    let message_id_number: i32 = callback_data.message_id_number as i32;
 
     let message_id_name = if callback_data.p_message_id_name.is_null() {
         c""
