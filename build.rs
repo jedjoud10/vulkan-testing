@@ -2,14 +2,20 @@ use std::{
     env,
     fs::File,
     io::Write,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use slang::Downcast;
 
 fn load_module(session: &mut slang::Session, file_name: &str) {
     let module = session.load_module(&format!("{file_name}.slang")).unwrap();
-    let entry_point = module.find_entry_point_by_name("main").unwrap();
+    let entry_point = module.find_entry_point_by_name("main");
+
+    let entry_point = if let Some(entry_point) = entry_point {
+        entry_point
+    } else {
+        return;
+    };
 
     let program = session
         .create_composite_component_type(&[
@@ -42,7 +48,7 @@ fn main() {
 
     // All compiler options are available through this builder.
     let session_options = slang::CompilerOptions::default()
-        .optimization(slang::OptimizationLevel::High)
+        .optimization(slang::OptimizationLevel::None)
         .matrix_layout_row(true);
 
     let target_desc = slang::TargetDesc::default().format(slang::CompileTarget::Spirv);

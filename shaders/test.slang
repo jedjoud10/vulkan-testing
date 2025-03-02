@@ -1,21 +1,16 @@
+#include <lighting.slang>
+
 [[vk::binding(0, 0)]]
 RWTexture2D<float4> output;
 
-[[vk::binding(0, 1)]]
-Texture3D<uint> voxel;
+[[vk::binding(1, 0)]]
+Texture3D<int> voxel;
 
-static const float3 sun = normalize(float3(1, 1, 1));
+
 
 [Differentiable]
 float sdf(float3 pos) {
     return min(pos.y, length(pos) - 15 + sin(pos.x * 3.0) * 0.6f);
-}
-
-float3 sky(float3 dir) {
-    float3 sky1 = float3(52, 186, 235);
-    float3 sky2 = float3(20, 45, 105);
-    float3 color = lerp(sky1, sky2, dir.y) / 255.0;
-    return color + pow(max(dot(dir, sun), 0), 100);
 }
 
 float3 normal(int face, float3 sign) {
@@ -45,8 +40,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     bool hit = false;
     int reflections = 1;
     int face;
-    for (int i = 0; i < 64; i++) {
-        if (sdf(floored_pos) < 1) {
+    for (int i = 0; i < 256; i++) {
+        if (voxel[(uint3)abs(floored_pos)] < 0) {
             float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
             float max = max3(test.x, test.y, test.z);
             float3 world = ray_pos + ray_dir * max;
@@ -55,10 +50,10 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
 
             if (floored_pos.x <= 0) {
                 hit = true;
-                color = uv;
+                color = light(world, uv, normal);
                 break;
             } else {
-                normal += float3(sin(world.x * 10 + 0.2565), cos(world.y * 10 + 0.89684), sin(world.z * 10 - 0.211256)) * 0.04;
+                normal += float3(sin(world.x * 100 + 0.2565), cos(world.y * 100 + 0.89684), sin(world.z * 100 - 0.211256)) * 0.04;
                 ray_dir = reflect(ray_dir, normalize(normal));
                 inv_dir = 1 / ray_dir;
                 dir_sign = sign(ray_dir);

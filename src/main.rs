@@ -18,8 +18,6 @@ mod voxel;
 
 use ash;
 use ash::vk;
-use bytemuck::Pod;
-use bytemuck::Zeroable;
 use gpu_allocator::vulkan::Allocation;
 use input::Input;
 use movement::Movement;
@@ -31,15 +29,6 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::KeyCode;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::{Window, WindowId};
-
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
-struct PushConstants {
-    screen_resolution: vek::Vec2<f32>,
-    _padding: vek::Vec2<f32>,
-    matrix: vek::Mat4<f32>,
-    position: vek::Vec4<f32>,
-}
 
 struct InternalApp {
     input: Input,
@@ -67,6 +56,12 @@ struct InternalApp {
     render_compute_descriptor_set_layout: vk::DescriptorSetLayout,
     render_compute_pipeline_layout: vk::PipelineLayout,
     render_compute_pipeline: vk::Pipeline,
+
+    voxel_compute_shader_module: vk::ShaderModule,
+    voxel_compute_descriptor_set_layout: vk::DescriptorSetLayout,
+    voxel_compute_pipeline_layout: vk::PipelineLayout,
+    voxel_compute_pipeline: vk::Pipeline,
+
     descriptor_pool: vk::DescriptorPool,
     allocator: gpu_allocator::vulkan::Allocator,
     voxel_image: vk::Image,
@@ -78,7 +73,7 @@ impl InternalApp {
     pub unsafe fn new(event_loop: &ActiveEventLoop) -> Self {
         let mut assets = HashMap::<&str, Vec<u32>>::new();
         asset!("test.spv", assets);
-        let raw = &*assets["test.spv"];
+        asset!("voxel.spv", assets);
 
         let window = event_loop
             .create_window(Window::default_attributes())
@@ -193,10 +188,32 @@ impl InternalApp {
             render_compute_descriptor_set_layout,
             render_compute_pipeline_layout,
             render_compute_pipeline,
-        ) = pipeline::create_compute_pipeline(raw, &device, size_of::<PushConstants>() as u32);
+        ) = pipeline::create_render_compute_pipeline(&*assets["test.spv"], &device);
+        log::info!("created render compute pipeline");
+
+        let (
+            voxel_compute_shader_module,
+            voxel_compute_descriptor_set_layout,
+            voxel_compute_pipeline_layout,
+            voxel_compute_pipeline,
+        ) = pipeline::create_compute_voxel_pipeline(&*assets["voxel.spv"], &device);
+        log::info!("created voxel compute pipeline");
 
         let (voxel_image, allocation, voxel_image_view) =
             voxel::create_voxel_image(&device, &mut allocator);
+
+        voxel::generate_voxel_image(
+            &device,
+            queue,
+            pool,
+            descriptor_pool,
+            queue_family_index,
+            voxel_image,
+            voxel_image_view,
+            voxel_compute_descriptor_set_layout,
+            voxel_compute_pipeline_layout,
+            voxel_compute_pipeline
+        );
 
         Self {
             input: Default::default(),
@@ -225,6 +242,10 @@ impl InternalApp {
             render_compute_descriptor_set_layout,
             render_compute_pipeline_layout,
             render_compute_pipeline,
+            voxel_compute_shader_module,
+            voxel_compute_descriptor_set_layout,
+            voxel_compute_pipeline_layout,
+            voxel_compute_pipeline,
             descriptor_pool,
             allocator,
             voxel_image,
@@ -425,7 +446,7 @@ impl InternalApp {
 
         let size = size.map(|x| x as f32);
 
-        let push_constants = PushConstants {
+        let push_constants = pipeline::PushConstants {
             screen_resolution: size,
             _padding: Default::default(),
             matrix: self.movement.proj_matrix * self.movement.view_matrix,
@@ -533,14 +554,9 @@ impl InternalApp {
     }
 
     pub unsafe fn destroy(mut self) {
-        self.device
-            .destroy_pipeline(self.render_compute_pipeline, None);
-        self.device
-            .destroy_pipeline_layout(self.render_compute_pipeline_layout, None);
-        self.device
-            .destroy_descriptor_set_layout(self.render_compute_descriptor_set_layout, None);
-        self.device
-            .destroy_shader_module(self.render_compute_shader_module, None);
+        pipeline::destroy(&self.device, self.render_compute_shader_module, self.render_compute_descriptor_set_layout, self.render_compute_pipeline_layout, self.render_compute_pipeline);
+        pipeline::destroy(&self.device, self.voxel_compute_shader_module, self.voxel_compute_descriptor_set_layout, self.voxel_compute_pipeline_layout, self.voxel_compute_pipeline);
+        
         self.device
             .destroy_descriptor_pool(self.descriptor_pool, None);
         log::info!("destroyed pipeline, layout, desc. set, shader module, and desc. pool");

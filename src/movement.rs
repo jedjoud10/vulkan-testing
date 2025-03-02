@@ -1,9 +1,6 @@
 use crate::input::{Axis, Input, MouseAxis};
 use vek::Clamp;
-use winit::{
-    event::ElementState,
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::KeyCode;
 
 #[derive(Default)]
 pub struct Movement {
