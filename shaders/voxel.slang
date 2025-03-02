@@ -1,7 +1,7 @@
 #include <other.slang>
 
 [[vk::binding(0, 0)]]
-RWTexture3D<int> voxels;
+RWTexture3D<uint8_t> voxels;
 
 [shader("compute")]
 [numthreads(8, 8, 8)]
@@ -12,5 +12,5 @@ void main(uint3 id: SV_DispatchThreadID) {
         base -= 10;
     }
 
-    voxels[id] = base;
+    voxels[id] = base < 0;
 }

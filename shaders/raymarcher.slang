@@ -4,9 +4,7 @@
 RWTexture2D<float4> output;
 
 [[vk::binding(1, 0)]]
-Texture3D<int> voxel;
-
-
+RWTexture3D<uint8_t> voxel;
 
 [Differentiable]
 float sdf(float3 pos) {
@@ -41,7 +39,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     int reflections = 1;
     int face;
     for (int i = 0; i < 256; i++) {
-        if (voxel[(uint3)abs(floored_pos)] < 0) {
+        if (voxel[(uint3)abs(floored_pos)] == 1) {
             float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
             float max = max3(test.x, test.y, test.z);
             float3 world = ray_pos + ray_dir * max;

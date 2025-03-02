@@ -16,8 +16,6 @@ pub unsafe fn create_surface(
         None,
     )
     .unwrap();
-    log::debug!("Created the Vulkan surface successfully");
     let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
-    log::debug!("Created the Vulkan surface loader successfully");
     (surface_loader, surface)
 }

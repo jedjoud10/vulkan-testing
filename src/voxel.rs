@@ -13,7 +13,7 @@ pub unsafe fn create_voxel_image(
             height: SIZE,
             depth: SIZE,
         })
-        .format(vk::Format::R32_SINT)
+        .format(vk::Format::R8_UINT)
         .image_type(vk::ImageType::TYPE_3D)
         .initial_layout(vk::ImageLayout::UNDEFINED)
         .mip_levels(1)
@@ -48,7 +48,7 @@ pub unsafe fn create_voxel_image(
         .level_count(1);
     let voxel_image_view_create_info = vk::ImageViewCreateInfo::default()
         .image(voxel_image)
-        .format(vk::Format::R32_SINT)
+        .format(vk::Format::R8_UINT)
         .view_type(vk::ImageViewType::TYPE_3D)
         .subresource_range(subresource_range);
     let voxel_image_view = device

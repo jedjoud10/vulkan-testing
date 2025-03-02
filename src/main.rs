@@ -72,7 +72,7 @@ struct InternalApp {
 impl InternalApp {
     pub unsafe fn new(event_loop: &ActiveEventLoop) -> Self {
         let mut assets = HashMap::<&str, Vec<u32>>::new();
-        asset!("test.spv", assets);
+        asset!("raymarcher.spv", assets);
         asset!("voxel.spv", assets);
 
         let window = event_loop
@@ -188,7 +188,7 @@ impl InternalApp {
             render_compute_descriptor_set_layout,
             render_compute_pipeline_layout,
             render_compute_pipeline,
-        ) = pipeline::create_render_compute_pipeline(&*assets["test.spv"], &device);
+        ) = pipeline::create_render_compute_pipeline(&*assets["raymarcher.spv"], &device);
         log::info!("created render compute pipeline");
 
         let (
