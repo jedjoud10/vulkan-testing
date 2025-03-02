@@ -19,3 +19,46 @@ float3 sky(float3 dir) {
     float3 color = lerp(sky1, sky2, dir.y) / 255.0;
     return color + pow(max(dot(dir, sun), 0), 100);
 }
+
+struct ao_solver {
+    RWTexture3D<uint8_t> voxel;
+    uint3 pos;
+    float3 uv;
+    int face;
+    float3 sign;
+
+    float test_ao(int3 offset, int target_face, float value) {
+        if (sign.x < 0) {
+            offset.x = -offset.x;
+        }
+
+        if (face == target_face) {
+            if ((voxel[pos + offset] & 1) == 1) {
+                return value;
+            } else {
+                return 1.0;
+            }
+        } else {
+            return 0.0;
+        }
+    }
+
+    float ao() {
+        return 1.0;
+        /*
+        float x1 = test_ao(int3(-1, -1, 0), 0, uv.y);
+        float x2 = test_ao(int3(-1, 1, 0), 0, 1-uv.y);
+        float x3 = test_ao(int3(-1, 0, -1), 0, uv.z);
+        float x4 = test_ao(int3(-1, 0, 1), 0, 1-uv.z);
+        
+
+        float x11 = test_ao(int3(-1, -1, -1), 0, min(uv.y + uv.z, 1));
+        float x12 = test_ao(int3(-1, -1, 1), 0, min(uv.y + 1 - uv.z, 1));
+        float x13 = test_ao(int3(-1, 1, -1), 0, min(1 - uv.y + uv.z, 1));
+        float x14 = test_ao(int3(-1, 1, 1), 0, min(1 - uv.y + 1 - uv.z, 1));
+
+        // return x1 * x2 * x3 * x4;
+        return x11 * x12 * x13 * x14 * x1 * x2 * x3 * x4;
+        */
+    }
+}

@@ -1,7 +1,7 @@
 use ash::vk;
 use gpu_allocator::vulkan::{Allocation, Allocator};
 
-const SIZE: u32 = 128;
+const SIZE: u32 = 256;
 
 pub unsafe fn create_voxel_image(
     device: &ash::Device,

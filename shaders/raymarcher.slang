@@ -6,6 +6,8 @@ RWTexture2D<float4> output;
 [[vk::binding(1, 0)]]
 RWTexture3D<uint8_t> voxel;
 
+static const int size = 256;
+
 [Differentiable]
 float sdf(float3 pos) {
     return min(pos.y, length(pos) - 15 + sin(pos.x * 3.0) * 0.6f);
@@ -36,28 +38,52 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     // output[id.xy] = float4(0);
     float3 color = 0.0;
     bool hit = false;
-    int reflections = 1;
-    int face;
-    for (int i = 0; i < 256; i++) {
-        if (voxel[(uint3)abs(floored_pos)] == 1) {
+    int reflections = 0;
+    int face = 0;
+    for (int i = 0; i < 64; i++) {
+        uint8_t raw = 0;
+
+        if (all(floored_pos >= 0) && any(floored_pos < size)) {
+            raw = voxel[(uint3)floored_pos];
+        }
+
+        bool active = (raw & 1) == 1;
+        bool reflective = ((raw >> 1) & 1) == 1;
+        bool refractive = ((raw >> 2) & 1) == 1;
+
+        if (active) {
             float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
             float max = max3(test.x, test.y, test.z);
             float3 world = ray_pos + ray_dir * max;
             float3 uv = world - floored_pos;
             float3 normal = normal(face, dir_sign);
 
-            if (floored_pos.x <= 0) {
-                hit = true;
-                color = light(world, uv, normal);
-                break;
-            } else {
-                normal += float3(sin(world.x * 100 + 0.2565), cos(world.y * 100 + 0.89684), sin(world.z * 100 - 0.211256)) * 0.04;
-                ray_dir = reflect(ray_dir, normalize(normal));
+            if (refractive || reflective) {
+                normal += float3(sin(world.x * 10 + 0.2565), cos(world.y * 10 + 0.89684), sin(world.z * 10 - 0.211256)) * 0.04;
+
+                if (refractive) {
+                    ray_dir = refract(ray_dir, normalize(normal), 0.9);
+                } else {
+                    ray_dir = reflect(ray_dir, normalize(normal));
+                }
+                
                 inv_dir = 1 / ray_dir;
                 dir_sign = sign(ray_dir);
                 side_dist = (floored_pos - world + 0.5 + 0.5 * dir_sign);
                 ray_pos = world;
                 reflections++;
+            } else {
+                hit = true;
+
+                ao_solver solver;
+                solver.voxel = voxel;
+                solver.pos = (uint3)floored_pos;
+                solver.uv = uv;
+                solver.face = face;
+                solver.sign = dir_sign;
+                color = light(world, uv, normal) * solver.ao();
+                //color = solver.ao();
+                break;
             }
         }
 
@@ -72,7 +98,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
         color = sky(ray_dir);
     }
 
-    color /= reflections;
+    color /= max(reflections, 1);
 
     int depth = 8;
     color = clamp(color, 0, 1);
