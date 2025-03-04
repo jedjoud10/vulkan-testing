@@ -30,7 +30,7 @@ pub unsafe fn create_swapchain(
         .surface(surface_khr)
         .min_image_count(surface_capabilities.min_image_count)
         .image_format(surface_formats[0].format)
-        .image_color_space(surface_formats[0].color_space)
+        .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
         .image_extent(extent)
         .image_array_layers(1)
         .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
@@ -53,7 +53,7 @@ pub unsafe fn create_swapchain(
     (swapchain_loader, swapchain, images)
 }
 
-pub const SCALING_FACTOR: u32 = 1;
+pub const SCALING_FACTOR: u32 = 2;
 
 pub unsafe fn create_temporary_target_render_texture(
     instance: &ash::Instance,
