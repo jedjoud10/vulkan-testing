@@ -1,3 +1,5 @@
+#ifndef LIGHTING
+#define LIGHTING
 #include <other.slang>
 
 static const float3 sun = normalize(float3(1, 1, 1));
@@ -7,6 +9,18 @@ float3 sky(float3 dir) {
     float3 sky2 = pow(float3(20, 45, 105) / 255.0, 2.2);
     float3 color = lerp(sky1, sky2, dir.y);
     return color + pow(max(dot(dir, sun), 0), 100) * 10;
+}
+
+float2 flatten_uvs(int face, float3 dir_sign, float3 uvs) {
+    if (face == 0) {
+        return uvs.yz;
+    } else if (face == 1) {
+        return uvs.xz;
+    } else if (face == 2) {
+        return uvs.xy;
+    }
+
+    return -1;
 }
 
 float3 light(Fetcher fetcher, uint3 id, float3 world, float3 uv, float3 normal, float ao) {
@@ -36,7 +50,7 @@ float3 light(Fetcher fetcher, uint3 id, float3 world, float3 uv, float3 normal, 
     float3 color = ((top_pixels || top_pixels) ? grass : dirt);
 
     float3 diffuse = color * mixer;
-    float3 ambient = sky(normal);
+    //float3 ambient = sky(normal);
 
     return (1 * diffuse * ndotl + diffuse * 1.5) * (ao * 0.5 + 0.5);
 }
@@ -127,3 +141,5 @@ struct ao_solver {
         return x * y * z;
     }
 }
+
+#endif

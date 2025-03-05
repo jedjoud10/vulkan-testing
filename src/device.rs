@@ -26,6 +26,7 @@ pub unsafe fn create_device_and_queue(
     let mut device_features_13 = vk::PhysicalDeviceVulkan13Features::default()
         .synchronization2(true);
     let mut device_features_12 = vk::PhysicalDeviceVulkan12Features::default()
+        .storage_buffer8_bit_access(true)
         .shader_int8(true);
 
     let device_extension_names = vec![ash::khr::swapchain::NAME];

@@ -1,3 +1,7 @@
+#ifndef OTHER
+#define OTHER
+#include <other.slang>
+
 // https://www.shadertoy.com/view/4djSRW
 float hash12(float2 p) {
     float3 p3  = fract(float3(p.xyx) * .1031);
@@ -53,3 +57,9 @@ struct Fetcher {
         return voxel;
     }
 }
+
+struct SurfaceData {
+    uint8_t4[2 * 2] colors;
+}
+
+#endif

@@ -6,6 +6,12 @@ RWTexture2D<float4> output;
 [[vk::binding(1, 0)]]
 RWTexture3D<uint8_t> voxel;
 
+[[vk::binding(2, 0)]]
+RWStructuredBuffer<SurfaceData> surface_data_buffer;
+
+[[vk::binding(3, 0)]]
+RWTexture3D<uint> voxel_indices;
+
 static const int size = 256;
 
 [Differentiable]
@@ -15,6 +21,18 @@ float sdf(float3 pos) {
 
 float3 normal(int face, float3 sign) {
     return -(float3)(face == int3(0,1,2)) * sign;
+}
+
+int global_face(int face, float3 sign) {
+    if (face == 0) {
+        return sign.x > 0 ? 1 : 0;
+    } else if (face == 1) {
+        return sign.y > 0 ? 3 : 2;
+    } else if (face == 2) {
+        return sign.z > 0 ? 5 : 4;
+    }
+
+    return -1;
 }
 
 [shader("compute")]
@@ -83,6 +101,35 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 
                 float ao = solver.ao();
                 color = light(fetcher, (uint3)floored_pos, world, uv, normal, ao);
+                uint funny_index_magic = voxel_indices[(uint3)floored_pos];
+                uint funny_index = funny_index_magic & ~(0b111111 << (31 - 6));
+                uint enabled_faces = (funny_index_magic >> (31 - 6)) & 0b111111;
+                uint face2 = global_face(face, dir_sign);
+
+                // if face = 0, enabled faces = 100111, target face is the 1st bit from the right, packed index = 0
+                // if face = 4, enabled faces = 110011, target face is the 4th bit from the right, packed index = 2
+
+                // first bit (from the left) is the corresponding face, but we count bits from the left
+                // count number of valid bits until we reach (6-face) (counting from right)
+
+                // we always only look at one face...
+                // we can optimize the surface data fetch by knowing this
+                
+                // adds 2 padding bits to the right at the start
+                int test = enabled_faces << 2;
+                test = (test << (8-face2)) & 0xFF;
+                int packed_face_index = countbits(test);
+
+                SurfaceData surface_data = surface_data_buffer[funny_index + packed_face_index];
+
+                float2 flat = flatten_uvs(face, dir_sign, uv);
+                uint2 pixels = (uint2)(floor(flat * 2));
+                uint converted_to_flat_index = pixels.x + pixels.y * 2;
+
+                color = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+
+                // color = voxel_indices[(uint3)floored_pos];
+                //color = face2 / 6.0;
                 break;
             }
         }

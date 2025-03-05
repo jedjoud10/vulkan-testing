@@ -67,9 +67,10 @@ struct InternalApp {
 
     descriptor_pool: vk::DescriptorPool,
     allocator: gpu_allocator::vulkan::Allocator,
-    voxel_image: vk::Image,
-    voxel_image_view: vk::ImageView,
-    voxel_image_allocation: Allocation,
+    voxel_image: (vk::Image, Allocation, vk::ImageView),
+    voxel_surface_index_image: (vk::Image, Allocation, vk::ImageView),
+    voxel_surface_buffer: (vk::Buffer, Allocation),
+    voxel_surface_counter_buffer: (vk::Buffer, Allocation),
     ticker: ticker::Ticker,
 }
 
@@ -201,8 +202,10 @@ impl InternalApp {
         ) = pipeline::create_compute_voxel_pipelines(&*assets["voxel.spv"], &device);
         log::info!("created voxel compute pipeline");
 
-        let (voxel_image, allocation, voxel_image_view) =
-            voxel::create_voxel_image(&device, &mut allocator);
+        let voxel_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE);
+        let voxel_surface_index_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R32_UINT, vk::ImageUsageFlags::STORAGE);
+        let voxel_surface_buffer = voxel::create_voxel_surface_buffer(&device, &mut allocator);
+        let voxel_surface_counter_buffer = voxel::create_voxel_counter_buffer(&device, &mut allocator);
 
         voxel::generate_voxel_image(
             &device,
@@ -210,8 +213,10 @@ impl InternalApp {
             pool,
             descriptor_pool,
             queue_family_index,
-            voxel_image,
-            voxel_image_view,
+            voxel_image.0,
+            voxel_image.2,
+            voxel_surface_index_image.0,
+            voxel_surface_index_image.2,
             voxel_compute_pipelines[0].0,
             voxel_compute_pipelines[0].1,
             voxel_compute_pipelines[0].2
@@ -246,10 +251,11 @@ impl InternalApp {
             descriptor_pool,
             allocator,
             voxel_image,
-            voxel_image_view,
-            voxel_image_allocation: allocation,
             rt_images,
-            ticker: ticker::Ticker { ticks_per_second: 5f32, accumulator: 0f32 }
+            ticker: ticker::Ticker { ticks_per_second: 20f32, accumulator: 0f32 },
+            voxel_surface_buffer,
+            voxel_surface_index_image,
+            voxel_surface_counter_buffer,
         }
     }
 
@@ -338,8 +344,12 @@ impl InternalApp {
             cmd,
             self.descriptor_pool,
             self.queue_family_index,
-            self.voxel_image,
-            self.voxel_image_view,
+            self.voxel_surface_buffer.0,
+            self.voxel_surface_counter_buffer.0,
+            self.voxel_image.0,
+            self.voxel_image.2,
+            self.voxel_surface_index_image.0,
+            self.voxel_surface_index_image.2,
             self.voxel_compute_pipelines[1].0,
             self.voxel_compute_pipelines[1].1,
             self.voxel_compute_pipelines[1].2
@@ -411,27 +421,49 @@ impl InternalApp {
             .image_layout(vk::ImageLayout::GENERAL)
             .sampler(vk::Sampler::null());
         let descriptor_voxel_image_info = vk::DescriptorImageInfo::default()
-            .image_view(self.voxel_image_view)
+            .image_view(self.voxel_image.2)
             .image_layout(vk::ImageLayout::GENERAL)
             .sampler(vk::Sampler::null());
+        let descriptor_voxel_surface_index_image_info = vk::DescriptorImageInfo::default()
+            .image_view(self.voxel_surface_index_image.2)
+            .image_layout(vk::ImageLayout::GENERAL)
+            .sampler(vk::Sampler::null());
+        let descriptor_voxel_buffer_info = vk::DescriptorBufferInfo::default()
+            .buffer(self.voxel_surface_buffer.0)
+            .offset(0)
+            .range(u64::MAX);
         let descriptor_rt_image_infos = [descriptor_rt_image_info];
         let descriptor_voxel_image_infos = [descriptor_voxel_image_info];
+        let descriptor_voxel_surface_index_image_infos = [descriptor_voxel_surface_index_image_info];
+        let descriptor_voxel_buffer_infos = [descriptor_voxel_buffer_info];
 
-        let first_descriptor_write = vk::WriteDescriptorSet::default()
+        let descriptor_write_1 = vk::WriteDescriptorSet::default()
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
             .dst_binding(0)
             .dst_set(descriptor_set)
             .image_info(&descriptor_rt_image_infos);
-        let second_descriptor_write = vk::WriteDescriptorSet::default()
+        let descriptor_write_2 = vk::WriteDescriptorSet::default()
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
             .dst_binding(1)
             .dst_set(descriptor_set)
             .image_info(&descriptor_voxel_image_infos);
+        let descriptor_write_3 = vk::WriteDescriptorSet::default()
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .dst_binding(2)
+            .dst_set(descriptor_set)
+            .buffer_info(&descriptor_voxel_buffer_infos);
+        let descriptor_write_4 = vk::WriteDescriptorSet::default()
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .dst_binding(3)
+            .dst_set(descriptor_set)
+            .image_info(&descriptor_voxel_surface_index_image_infos);
 
         self.device
-            .update_descriptor_sets(&[first_descriptor_write, second_descriptor_write], &[]);
+            .update_descriptor_sets(&[descriptor_write_1, descriptor_write_2, descriptor_write_3, descriptor_write_4], &[]);
 
         self.device.cmd_bind_descriptor_sets(
             cmd,
@@ -572,23 +604,37 @@ impl InternalApp {
         self.device.destroy_pipeline_layout(self.render_compute_pipeline_layout, None);
         self.device.destroy_descriptor_set_layout(self.render_compute_descriptor_set_layout, None);
         self.device.destroy_shader_module(self.render_compute_shader_module, None);
+        log::info!("destroyed render compute pipeline");
 
         for (descriptor_set_layout, pipeline_layout, pipeline) in self.voxel_compute_pipelines  {
             self.device.destroy_pipeline(pipeline, None);
             self.device.destroy_pipeline_layout(pipeline_layout, None);
             self.device.destroy_descriptor_set_layout(descriptor_set_layout, None);
         }
-
         self.device.destroy_shader_module(self.voxel_compute_shader_module, None);
+        log::info!("destroyed voxel compute pipeline");
 
         self.device
             .destroy_descriptor_pool(self.descriptor_pool, None);
-        log::info!("destroyed pipeline, layout, desc. set, shader module, and desc. pool");
+        log::info!("destroyed descriptor pool");
 
-        self.device.destroy_image_view(self.voxel_image_view, None);
-        self.device.destroy_image(self.voxel_image, None);
-        self.allocator.free(self.voxel_image_allocation).unwrap();
+        self.device.destroy_image_view(self.voxel_image.2, None);
+        self.device.destroy_image(self.voxel_image.0, None);
+        self.allocator.free(self.voxel_image.1).unwrap();
         log::info!("destroyed voxel image");
+
+        self.device.destroy_image_view(self.voxel_surface_index_image.2, None);
+        self.device.destroy_image(self.voxel_surface_index_image.0, None);
+        self.allocator.free(self.voxel_surface_index_image.1).unwrap();
+        log::info!("destroyed voxel surface index image");
+
+        self.device.destroy_buffer(self.voxel_surface_buffer.0, None);
+        self.allocator.free(self.voxel_surface_buffer.1).unwrap();
+        log::info!("destroyed voxel buffer");
+
+        self.device.destroy_buffer(self.voxel_surface_counter_buffer.0, None);
+        self.allocator.free(self.voxel_surface_counter_buffer.1).unwrap();
+        log::info!("destroyed voxel counter buffer");
 
         // TODO: Just cope with the error messages vro
         self.device
