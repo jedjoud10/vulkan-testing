@@ -15,6 +15,7 @@ mod queue;
 mod surface;
 mod swapchain;
 mod voxel;
+mod ticker;
 
 use ash;
 use ash::vk;
@@ -58,15 +59,18 @@ struct InternalApp {
     render_compute_pipeline: vk::Pipeline,
 
     voxel_compute_shader_module: vk::ShaderModule,
-    voxel_compute_descriptor_set_layout: vk::DescriptorSetLayout,
-    voxel_compute_pipeline_layout: vk::PipelineLayout,
-    voxel_compute_pipeline: vk::Pipeline,
+    voxel_compute_pipelines: [(
+        vk::DescriptorSetLayout,
+        vk::PipelineLayout,
+        vk::Pipeline,
+    ); 2],
 
     descriptor_pool: vk::DescriptorPool,
     allocator: gpu_allocator::vulkan::Allocator,
     voxel_image: vk::Image,
     voxel_image_view: vk::ImageView,
     voxel_image_allocation: Allocation,
+    ticker: ticker::Ticker,
 }
 
 impl InternalApp {
@@ -193,10 +197,8 @@ impl InternalApp {
 
         let (
             voxel_compute_shader_module,
-            voxel_compute_descriptor_set_layout,
-            voxel_compute_pipeline_layout,
-            voxel_compute_pipeline,
-        ) = pipeline::create_compute_voxel_pipeline(&*assets["voxel.spv"], &device);
+            voxel_compute_pipelines,
+        ) = pipeline::create_compute_voxel_pipelines(&*assets["voxel.spv"], &device);
         log::info!("created voxel compute pipeline");
 
         let (voxel_image, allocation, voxel_image_view) =
@@ -210,17 +212,14 @@ impl InternalApp {
             queue_family_index,
             voxel_image,
             voxel_image_view,
-            voxel_compute_descriptor_set_layout,
-            voxel_compute_pipeline_layout,
-            voxel_compute_pipeline
+            voxel_compute_pipelines[0].0,
+            voxel_compute_pipelines[0].1,
+            voxel_compute_pipelines[0].2
         );
 
         Self {
             input: Default::default(),
-            movement: Movement {
-                position: vek::Vec3::unit_y() * 3f32,
-                ..Default::default()
-            },
+            movement: Movement::new(),
             window,
             instance,
             entry,
@@ -243,15 +242,14 @@ impl InternalApp {
             render_compute_pipeline_layout,
             render_compute_pipeline,
             voxel_compute_shader_module,
-            voxel_compute_descriptor_set_layout,
-            voxel_compute_pipeline_layout,
-            voxel_compute_pipeline,
+            voxel_compute_pipelines,
             descriptor_pool,
             allocator,
             voxel_image,
             voxel_image_view,
             voxel_image_allocation: allocation,
             rt_images,
+            ticker: ticker::Ticker { ticks_per_second: 5f32, accumulator: 0f32 }
         }
     }
 
@@ -334,6 +332,18 @@ impl InternalApp {
         self.device
             .begin_command_buffer(cmd, &cmd_buffer_begin_info)
             .unwrap();
+
+        let desc_temp = self.ticker.update(delta).then(|| voxel::update_voxel_thingies(
+            &self.device,
+            cmd,
+            self.descriptor_pool,
+            self.queue_family_index,
+            self.voxel_image,
+            self.voxel_image_view,
+            self.voxel_compute_pipelines[1].0,
+            self.voxel_compute_pipelines[1].1,
+            self.voxel_compute_pipelines[1].2
+        ));
 
         let subresource_range = vk::ImageSubresourceRange::default()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -551,12 +561,26 @@ impl InternalApp {
         self.device
             .free_descriptor_sets(self.descriptor_pool, &descriptor_sets)
             .unwrap();
+        
+        if let Some(desc_temp) = desc_temp{
+            self.device.free_descriptor_sets(self.descriptor_pool, &[desc_temp]).unwrap();
+        }
     }
 
     pub unsafe fn destroy(mut self) {
-        pipeline::destroy(&self.device, self.render_compute_shader_module, self.render_compute_descriptor_set_layout, self.render_compute_pipeline_layout, self.render_compute_pipeline);
-        pipeline::destroy(&self.device, self.voxel_compute_shader_module, self.voxel_compute_descriptor_set_layout, self.voxel_compute_pipeline_layout, self.voxel_compute_pipeline);
-        
+        self.device.destroy_pipeline(self.render_compute_pipeline, None);
+        self.device.destroy_pipeline_layout(self.render_compute_pipeline_layout, None);
+        self.device.destroy_descriptor_set_layout(self.render_compute_descriptor_set_layout, None);
+        self.device.destroy_shader_module(self.render_compute_shader_module, None);
+
+        for (descriptor_set_layout, pipeline_layout, pipeline) in self.voxel_compute_pipelines  {
+            self.device.destroy_pipeline(pipeline, None);
+            self.device.destroy_pipeline_layout(pipeline_layout, None);
+            self.device.destroy_descriptor_set_layout(descriptor_set_layout, None);
+        }
+
+        self.device.destroy_shader_module(self.voxel_compute_shader_module, None);
+
         self.device
             .destroy_descriptor_pool(self.descriptor_pool, None);
         log::info!("destroyed pipeline, layout, desc. set, shader module, and desc. pool");

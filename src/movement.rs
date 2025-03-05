@@ -16,6 +16,13 @@ pub struct Movement {
 }
 
 impl Movement {
+    pub fn new() -> Self {
+        Self {
+            position: vek::Vec3::new(crate::voxel::SIZE as f32 / 2f32, 20f32, crate::voxel::SIZE as f32 / 2f32),
+            ..Default::default()
+        }
+    }
+
     pub fn update(&mut self, input: &Input, ratio: f32, delta: f32) {
         self.local_velocity = vek::Vec2::<f32>::zero();
         let speed = if input.get_button(KeyCode::ShiftLeft).held() {

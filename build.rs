@@ -17,15 +17,26 @@ fn load_module(session: &mut slang::Session, file_name: &str) {
         return;
     };
 
-    let program = session
-        .create_composite_component_type(&[
-            module.downcast().clone(),
-            entry_point.downcast().clone(),
-        ])
-        .unwrap();
+    let program = if let Some(entry_point2) = module.find_entry_point_by_name("main2") {
+        println!("cargo:warning=BRO");
+        session
+            .create_composite_component_type(&[
+                module.downcast().clone(),
+                entry_point.downcast().clone(),
+                entry_point2.downcast().clone()
+            ])
+            .unwrap()
+    } else {
+        session
+            .create_composite_component_type(&[
+                module.downcast().clone(),
+                entry_point.downcast().clone(),
+            ])
+            .unwrap()
+    };
 
     let linked_program = program.link().unwrap();
-    let shader_bytecode = linked_program.entry_point_code(0, 0).unwrap();
+    let shader_bytecode = linked_program.target_code(0).unwrap();
     let raw = shader_bytecode.as_slice();
     let length = raw.len();
 
@@ -49,6 +60,7 @@ fn main() {
     // All compiler options are available through this builder.
     let session_options = slang::CompilerOptions::default()
         .optimization(slang::OptimizationLevel::None)
+        .use_vulkan_entry_point_names(true)
         .matrix_layout_row(true);
 
     let target_desc = slang::TargetDesc::default().format(slang::CompileTarget::Spirv);
