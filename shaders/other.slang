@@ -1,6 +1,7 @@
 #ifndef OTHER
 #define OTHER
-#include <other.slang>
+
+static const int size = 256;
 
 // https://www.shadertoy.com/view/4djSRW
 float hash12(float2 p) {
@@ -58,8 +59,35 @@ struct Fetcher {
     }
 }
 
+bool raymarch_do_the_funny(
+    RWTexture3D<uint8_t> voxels,
+    float3 ray_dir,
+    float3 ray_pos,
+) {
+    float3 floored_pos = floor(ray_pos);
+    float3 inv_dir = 1 / ray_dir;
+    float3 dir_sign = sign(ray_dir);
+    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
+    Fetcher fetcher = Fetcher(voxels, size);
+
+    for (int i = 0; i < 64; i++) {
+        Voxel voxel = fetcher.fetch((int3)floored_pos);
+
+        if (voxel.active) {
+            return true;
+        }
+
+        float3 reconst = side_dist * inv_dir;
+        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
+        floored_pos += dir_sign * eqs;
+        side_dist += dir_sign * eqs;
+    }
+
+    return false;
+}
+
 struct SurfaceData {
-    uint8_t4[2 * 2] colors;
+    uint8_t4[4 * 4] colors;
 }
 
 #endif

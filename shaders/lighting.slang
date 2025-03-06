@@ -2,7 +2,7 @@
 #define LIGHTING
 #include <other.slang>
 
-static const float3 sun = normalize(float3(1, 1, 1));
+static const float3 sun = normalize(float3(1, 1, 0));
 
 float3 sky(float3 dir) {
     float3 sky1 = pow(float3(52, 186, 235) / 255.0, 2.2);
@@ -18,6 +18,19 @@ float2 flatten_uvs(int face, float3 dir_sign, float3 uvs) {
         return uvs.xz;
     } else if (face == 2) {
         return uvs.xy;
+    }
+
+    return -1;
+}
+
+uint3 unflatten_uvs(int face, bool negate, uint2 flattened) {
+    uint val = negate ? 1 : 0;
+    if (face == 0) {
+        return uint3(val, flattened.x, flattened.y);
+    } else if (face == 1) {
+        return uint3(flattened.x, val, flattened.y);
+    } else if (face == 2) {
+        return uint3(flattened.x, flattened.y, val);
     }
 
     return -1;

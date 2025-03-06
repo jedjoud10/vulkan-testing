@@ -16,7 +16,7 @@ RWStructuredBuffer<uint> counter;
 [shader("compute")]
 [numthreads(8, 8, 8)]
 void main(uint3 id: SV_DispatchThreadID) {
-    int base = (int)(noise((float2)id.xz * 0.1) * 15) + id.y - 15;
+    int base = (int)(noise((float2)id.xz * 0.1) * 10) + id.y - 15;
     //base += hash13(id) * 4;
     bool reflective = false;
     bool refractive = false;
@@ -25,14 +25,14 @@ void main(uint3 id: SV_DispatchThreadID) {
     uint8_t raw = 0;
 
     if (hash12(floor(id.xz / 4)) > 0.99) {
-        if (hash13(id) > 0.8) {
+        if (hash13(id) > 0.1) {
             base -= 20;
         }
 
         if (hash12(id.xz) > 0.5) {
-            //refractive = true;
+            refractive = true;
         } else {
-            //reflective = true;
+            reflective = true;
         }
     }
     
@@ -47,20 +47,20 @@ void main(uint3 id: SV_DispatchThreadID) {
 [numthreads(8, 8, 8)]
 void main2(uint3 id: SV_DispatchThreadID) {
     if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0) {
-        //voxels[id - uint3(0, 1, 0)] = voxels[id];
-        //voxels[id] = 0;
+        voxels[id - uint3(0, 1, 0)] = voxels[id];
+        voxels[id] = 0;
     }
 
     AllMemoryBarrier();
 
     if ((voxels[id] & 1) == 1) {
         static const int3[] offsets = {
-            int3(-1, 0, 0),
             int3(1, 0, 0),
-            int3(0, -1, 0),
+            int3(-1, 0, 0),
             int3(0, 1, 0),
-            int3(0, 0, -1),
+            int3(0, -1, 0),
             int3(0, 0, 1),
+            int3(0, 0, -1),
         };
 
         uint enabled_faces = 0;
@@ -70,6 +70,7 @@ void main2(uint3 id: SV_DispatchThreadID) {
             }
         }
 
+        //enabled_faces = 0b100101;
         if (enabled_faces > 0) {
             uint original = 0;
             InterlockedAdd(counter[0], countbits(enabled_faces), original);
@@ -79,15 +80,28 @@ void main2(uint3 id: SV_DispatchThreadID) {
                 if (((enabled_faces >> i) & 1) == 1) {
                     SurfaceData data;
 
-                    data.colors[0] = 0;
-                    data.colors[1] = 0;
-                    data.colors[2] = 0;
-                    data.colors[3] = 0;
-
-                    if (i == 0) {
-                        for (int k = 0; k < 4; k++) {
-                            data.colors[k] = uint8_t4(hash33(id + k) * 255, 0);
+                    /*
+                    for (int s = 0; s < 8; s++) {
+                        if (raymarch_do_the_funny(voxels, normalize(sun + (hash33(s * float3(2.12321, 5.3434, -34.2323))-0.5)*0.2), (float3)id + (float3)offsets[i] * 1 + 0.5)) {
+                            totals++;
                         }
+                    }
+                    */
+
+                    bool hit = raymarch_do_the_funny(voxels, normalize(sun), (float3)id + (float3)offsets[i] * 1 + 0.5);
+                    for (int k = 0; k < 16; k++) {
+                        uint2 uv = uint2(k % 4, k / 4);
+                        float3 color = 0;
+                        uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
+
+
+                        // 1 - (float)totals / 8
+                        // color = float3(uv / 3.0, 0);
+                        // color = unflattened / 3.0;
+                        color = hit ? 0.2 : 1.0;
+                        data.colors[k] = uint8_t4(clamp(color, 0, 1) * 255, 0);
+                        //data.colors[k] = uint8_t4(uv.x, uv.y);
+                        //data.colors[k] = uint8_t4(hash33(id + k * 345.23123 + i * 432.2321) * 255, 0);
                     }
                
                     
