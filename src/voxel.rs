@@ -1,6 +1,8 @@
 use ash::vk;
 use gpu_allocator::vulkan::{Allocation, Allocator};
 
+use crate::pipeline::PushConstants2;
+
 pub const SIZE: u32 = 256;
 
 pub unsafe fn create_voxel_image(
@@ -137,7 +139,7 @@ pub unsafe fn generate_voxel_image(
     voxel_indices_image_view: vk::ImageView,
     descriptor_set_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
-    pipeline: vk::Pipeline
+    pipeline: vk::Pipeline,
 ) {
     let cmd_buffer_create_info = vk::CommandBufferAllocateInfo::default()
         .command_buffer_count(1)
@@ -274,7 +276,8 @@ pub unsafe fn update_voxel_thingies(
     voxel_indices_image_view: vk::ImageView,
     descriptor_set_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
-    pipeline: vk::Pipeline
+    pipeline: vk::Pipeline,
+    push_constants: PushConstants2,
 ) -> vk::DescriptorSet {
     let subresource_range = vk::ImageSubresourceRange::default()
         .base_mip_level(0)
@@ -423,6 +426,9 @@ pub unsafe fn update_voxel_thingies(
     let barriers = [barrier];
     let dep = vk::DependencyInfo::default().memory_barriers(&barriers);
     device.cmd_pipeline_barrier2(cmd, &dep);
+
+    let raw = bytemuck::bytes_of(&push_constants);
+    device.cmd_push_constants(cmd, pipeline_layout, vk::ShaderStageFlags::COMPUTE, 0, raw);
     
     device.cmd_dispatch(cmd, SIZE / 8, SIZE / 8, SIZE / 8);
 

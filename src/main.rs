@@ -22,6 +22,7 @@ use ash::vk;
 use gpu_allocator::vulkan::Allocation;
 use input::Input;
 use movement::Movement;
+use pipeline::PushConstants2;
 use std::collections::HashMap;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -72,6 +73,7 @@ struct InternalApp {
     voxel_surface_buffer: (vk::Buffer, Allocation),
     voxel_surface_counter_buffer: (vk::Buffer, Allocation),
     ticker: ticker::Ticker,
+    sun: vek::Vec3<f32>,
 }
 
 impl InternalApp {
@@ -219,7 +221,8 @@ impl InternalApp {
             voxel_surface_index_image.2,
             voxel_compute_pipelines[0].0,
             voxel_compute_pipelines[0].1,
-            voxel_compute_pipelines[0].2
+            voxel_compute_pipelines[0].2,
+            
         );
 
         Self {
@@ -252,10 +255,11 @@ impl InternalApp {
             allocator,
             voxel_image,
             rt_images,
-            ticker: ticker::Ticker { ticks_per_second: 20f32, accumulator: 0f32 },
+            ticker: ticker::Ticker { ticks_per_second: 16f32, accumulator: 0f32 },
             voxel_surface_buffer,
             voxel_surface_index_image,
             voxel_surface_counter_buffer,
+            sun: vek::Vec3::unit_y(),
         }
     }
 
@@ -339,6 +343,14 @@ impl InternalApp {
             .begin_command_buffer(cmd, &cmd_buffer_begin_info)
             .unwrap();
 
+        self.sun = vek::Vec3::new(elapsed.sin(), 1.0, elapsed.cos()).normalized();
+
+        let push_constants = PushConstants2 {
+            forward: vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32),
+            position: self.movement.position.with_w(0.0f32),
+            sun: self.sun.normalized().with_w(0f32),
+        };
+
         let desc_temp = self.ticker.update(delta).then(|| voxel::update_voxel_thingies(
             &self.device,
             cmd,
@@ -352,7 +364,8 @@ impl InternalApp {
             self.voxel_surface_index_image.2,
             self.voxel_compute_pipelines[1].0,
             self.voxel_compute_pipelines[1].1,
-            self.voxel_compute_pipelines[1].2
+            self.voxel_compute_pipelines[1].2,
+            push_constants
         ));
 
         let subresource_range = vk::ImageSubresourceRange::default()
@@ -493,6 +506,7 @@ impl InternalApp {
             _padding: Default::default(),
             matrix: self.movement.proj_matrix * self.movement.view_matrix,
             position: self.movement.position.with_w(0f32),
+            sun: self.sun.normalized().with_w(0f32),
         };
 
         let raw = bytemuck::bytes_of(&push_constants);

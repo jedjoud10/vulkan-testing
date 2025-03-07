@@ -8,8 +8,16 @@ pub struct PushConstants {
     pub _padding: vek::Vec2<f32>,
     pub matrix: vek::Mat4<f32>,
     pub position: vek::Vec4<f32>,
+    pub sun: vek::Vec4<f32>,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct PushConstants2 {
+    pub forward: vek::Vec4<f32>,
+    pub position: vek::Vec4<f32>,
+    pub sun: vek::Vec4<f32>,
+}
 
 pub unsafe fn create_render_compute_pipeline(
     raw: &[u32],
@@ -194,8 +202,14 @@ pub unsafe fn create_compute_voxel_pipelines(
         .unwrap();
     let compute_descriptor_test_set_layouts = [compute_descriptor_test_set_layout];
 
+    let compute_pipeline_test_layout_push_constant_range = vk::PushConstantRange::default()
+        .offset(0)
+        .size(size_of::<PushConstants2>() as u32)
+        .stage_flags(vk::ShaderStageFlags::COMPUTE);
+    let compute_pipeline_test_layout_push_constant_ranges = [compute_pipeline_test_layout_push_constant_range];
+
     let compute_pipeline_test_layout_create_info = vk::PipelineLayoutCreateInfo::default()
-        .push_constant_ranges(&[])
+        .push_constant_ranges(&compute_pipeline_test_layout_push_constant_ranges)
         .flags(vk::PipelineLayoutCreateFlags::empty())
         .set_layouts(&compute_descriptor_test_set_layouts);
 

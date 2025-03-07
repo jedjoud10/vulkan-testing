@@ -21,39 +21,46 @@ void main(uint3 id: SV_DispatchThreadID) {
     bool reflective = false;
     bool refractive = false;
 
+    if (hash13(id * 3.432) > 0.95 && id.y == 40) {
+        //base = -2;
+    }
 
-    uint8_t raw = 0;
 
     if (hash12(floor(id.xz / 4)) > 0.99) {
-        if (hash13(id) > 0.1) {
-            base -= 20;
+        if (hash13(id) > 0.8) {
+            base -= 10;
+            refractive = true;
         }
 
+        /*
         if (hash12(id.xz) > 0.5) {
             refractive = true;
         } else {
-            reflective = true;
+            //reflective = true;
         }
+        */
     }
-    
-    bool active = base < 0;
-    raw |= active ? 1 : 0;
-    raw |= reflective ? 2 : 0;
-    raw |= refractive ? 4 : 0;
-    voxels[id] = raw;
+
+    Voxel voxel;
+    voxel.active = base < 0;
+    voxel.reflective = reflective;
+    voxel.refractive = refractive;
+    voxels[id] = voxel.into_raw();
 }
 
 [shader("compute")]
 [numthreads(8, 8, 8)]
-void main2(uint3 id: SV_DispatchThreadID) {
+void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun) {
     if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0) {
-        voxels[id - uint3(0, 1, 0)] = voxels[id];
-        voxels[id] = 0;
+        //voxels[id - uint3(0, 1, 0)] = voxels[id];
+        //voxels[id] = 0;
     }
 
     AllMemoryBarrier();
 
-    if ((voxels[id] & 1) == 1) {
+    float3 diff = normalize((float3)id - position.xyz + 0.5);
+    bool block_visible = dot(forward.xyz, diff) > 0.0;
+    if ((voxels[id] & 1) == 1 && block_visible) {
         static const int3[] offsets = {
             int3(1, 0, 0),
             int3(-1, 0, 0),
@@ -64,8 +71,12 @@ void main2(uint3 id: SV_DispatchThreadID) {
         };
 
         uint enabled_faces = 0;
+
         for (int i = 0; i < 6; i++) {
-            if ((voxels[id + offsets[i]] & 1) == 0) {
+            Voxel neighbour = Voxel.from_raw(voxels[id + offsets[i]]);
+            bool face_visible_neighbour = !neighbour.active || neighbour.refractive;
+            bool face_visible_camera = dot(offsets[i], diff) < 0.0;
+            if (face_visible_neighbour && face_visible_camera) {
                 enabled_faces |= 1 << i;
             }
         }
@@ -88,22 +99,15 @@ void main2(uint3 id: SV_DispatchThreadID) {
                     }
                     */
 
-                    bool hit = raymarch_do_the_funny(voxels, normalize(sun), (float3)id + (float3)offsets[i] * 1 + 0.5);
+                    float3 color = 0;
                     for (int k = 0; k < 16; k++) {
                         uint2 uv = uint2(k % 4, k / 4);
-                        float3 color = 0;
                         uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
-
-
-                        // 1 - (float)totals / 8
-                        // color = float3(uv / 3.0, 0);
-                        // color = unflattened / 3.0;
-                        color = hit ? 0.2 : 1.0;
+                        float3 world_pos = id + 0.125 + (unflattened / 4.0);
+                        float3 shadow_color = dda_shadownate(voxels, normalize(sun.xyz), world_pos + offsets[i] * 0.15, 0.2);
+                        color = shadow_color;
                         data.colors[k] = uint8_t4(clamp(color, 0, 1) * 255, 0);
-                        //data.colors[k] = uint8_t4(uv.x, uv.y);
-                        //data.colors[k] = uint8_t4(hash33(id + k * 345.23123 + i * 432.2321) * 255, 0);
                     }
-               
                     
                     surface_data_buffer[original + indexu] = data;
                     indexu++;
@@ -111,7 +115,7 @@ void main2(uint3 id: SV_DispatchThreadID) {
             }
 
             uint some_magic = original;
-            some_magic |= enabled_faces << (31 - 6);
+            some_magic |= enabled_faces << (32 - 6);
             voxel_indices[id] = some_magic;
         } else {
             voxel_indices[id] = -1;

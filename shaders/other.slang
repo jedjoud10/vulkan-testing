@@ -38,6 +38,22 @@ struct Voxel {
     bool active;
     bool reflective;
     bool refractive;
+
+    uint8_t into_raw() {
+        uint8_t raw = 0;
+        raw |= active ? 1 : 0;
+        raw |= reflective ? 2 : 0;
+        raw |= refractive ? 4 : 0;
+        return raw;
+    }
+
+    static Voxel from_raw(uint8_t raw) {
+        Voxel voxel;
+        voxel.active = (raw & 1) == 1;
+        voxel.reflective = ((raw >> 1) & 1) == 1;
+        voxel.refractive = ((raw >> 2) & 1) == 1;
+        return voxel;
+    }
 }
 
 struct Fetcher {
@@ -50,31 +66,33 @@ struct Fetcher {
         if (all(position >= 0) && all(position < max_size)) {
             raw = voxels[position];
         }
-
-        Voxel voxel;
-        voxel.active = (raw & 1) == 1;
-        voxel.reflective = ((raw >> 1) & 1) == 1;
-        voxel.refractive = ((raw >> 2) & 1) == 1;
-        return voxel;
+        
+        return Voxel.from_raw(raw);
     }
 }
 
-bool raymarch_do_the_funny(
+float3 dda_shadownate(
     RWTexture3D<uint8_t> voxels,
     float3 ray_dir,
     float3 ray_pos,
+    float base_shadow,
 ) {
-    float3 floored_pos = floor(ray_pos);
+    float3 floored_pos = ceil(ray_pos);
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
     Fetcher fetcher = Fetcher(voxels, size);
+    float3 color = 1.0;
 
-    for (int i = 0; i < 64; i++) {
-        Voxel voxel = fetcher.fetch((int3)floored_pos);
+    for (int i = 0; i < 32; i++) {
+        Voxel voxel = fetcher.fetch((int3)(floored_pos) - 1);
 
-        if (voxel.active) {
-            return true;
+        if (voxel.active && voxel.refractive) {
+            color *= normalize(hash33(floor(floored_pos) * float3(23.231, -435.4354, 9412.1)));
+        }
+
+        if (voxel.active && !voxel.refractive) {
+            return base_shadow;
         }
 
         float3 reconst = side_dist * inv_dir;
@@ -83,7 +101,7 @@ bool raymarch_do_the_funny(
         side_dist += dir_sign * eqs;
     }
 
-    return false;
+    return color;
 }
 
 struct SurfaceData {

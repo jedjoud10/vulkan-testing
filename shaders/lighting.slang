@@ -2,13 +2,11 @@
 #define LIGHTING
 #include <other.slang>
 
-static const float3 sun = normalize(float3(1, 1, 0));
-
-float3 sky(float3 dir) {
+float3 sky(float3 sun, float3 dir, bool enable_sun = true) {
     float3 sky1 = pow(float3(52, 186, 235) / 255.0, 2.2);
     float3 sky2 = pow(float3(20, 45, 105) / 255.0, 2.2);
     float3 color = lerp(sky1, sky2, dir.y);
-    return color + pow(max(dot(dir, sun), 0), 100) * 10;
+    return color + pow(max(dot(dir, sun), 0), 100) * (enable_sun ? 10.0 : 0.0);
 }
 
 float2 flatten_uvs(int face, float3 dir_sign, float3 uvs) {
@@ -24,7 +22,7 @@ float2 flatten_uvs(int face, float3 dir_sign, float3 uvs) {
 }
 
 uint3 unflatten_uvs(int face, bool negate, uint2 flattened) {
-    uint val = negate ? 1 : 0;
+    uint val = negate ? 3 : 0;
     if (face == 0) {
         return uint3(val, flattened.x, flattened.y);
     } else if (face == 1) {
@@ -36,7 +34,7 @@ uint3 unflatten_uvs(int face, bool negate, uint2 flattened) {
     return -1;
 }
 
-float3 light(Fetcher fetcher, uint3 id, float3 world, float3 uv, float3 normal, float ao) {
+float3 light(float3 sun, Fetcher fetcher, uint3 id, float3 world, float3 dir, float3 uv, float3 normal, float ao, float3 cached_color) {
     uint3 pixels = (uint3)(floor(uv * 8 + 0.001));
 
     if (hash13(id) > 0.5) {
@@ -47,14 +45,13 @@ float3 light(Fetcher fetcher, uint3 id, float3 world, float3 uv, float3 normal, 
         pixels.z = 7 - pixels.z;
     }
 
-    normal = normalize(normal + (hash33(pixels * float3(4.5984, 43.2323, -0.1212)) - 0.5) * 0.5);
+    normal = normalize(normal + (hash33(pixels * float3(4.5984, 43.2323, -0.1212)) - 0.5) * 0.2);
     float mixer = hash13(pixels * float3(123.321, 21.322, -32.321)) * 0.2 + 0.8;
 
     float3 grass = pow(float3(17, 33, 19) / 255, 2.2);
     float3 dirt = pow(float3(41, 37, 30) / 255, 2.2);
 
-
-    float ndotl = 2 * max(dot(normal, sun), 0);
+    float ndotl = max(dot(normal, sun), 0);
 
     bool top_face = normal.y > 0.5;
 
@@ -63,9 +60,9 @@ float3 light(Fetcher fetcher, uint3 id, float3 world, float3 uv, float3 normal, 
     float3 color = ((top_pixels || top_pixels) ? grass : dirt);
 
     float3 diffuse = color * mixer;
-    //float3 ambient = sky(normal);
 
-    return (1 * diffuse * ndotl + diffuse * 1.5) * (ao * 0.5 + 0.5);
+    float3 glint = sky(sun, reflect(dir, normal), false);
+    return (8 * diffuse * ndotl * cached_color + diffuse * 1.5 * cached_color) * (ao * 0.5 + 0.5) + glint * 0.005;
 }
 
 

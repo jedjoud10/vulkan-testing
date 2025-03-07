@@ -4,13 +4,13 @@
 RWTexture2D<float4> output;
 
 [[vk::binding(1, 0)]]
-RWTexture3D<uint8_t> voxel;
+RWTexture3D<uint8_t> voxels;
 
 [[vk::binding(2, 0)]]
 RWStructuredBuffer<SurfaceData> surface_data_buffer;
 
 [[vk::binding(3, 0)]]
-RWTexture3D<uint> voxel_indices;
+RWTexture3D<uint> voxels_indices;
 
 [Differentiable]
 float sdf(float3 pos) {
@@ -35,7 +35,7 @@ int global_face(int face, float3 sign) {
 
 [shader("compute")]
 [numthreads(32, 32, 1)]
-void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<float,4,4> mat, uniform float3 position) {
+void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<float,4,4> mat, uniform float4 position, uniform float4 sun) {
     float2 uvs = (float2)id.xy / screen;
     uvs *= 2.0;
     uvs -= 1.0;
@@ -43,18 +43,19 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     uvs.x = -uvs.x;
 
     float3 ray_dir = normalize((mul(mat, float4(uvs, 1, 0))).xyz);
-    float3 ray_pos = position;
+    float3 ray_pos = position.xyz;
     float3 floored_pos = floor(ray_pos);
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
 
-    Fetcher fetcher = Fetcher(voxel, size);
+    Fetcher fetcher = Fetcher(voxels, size);
     
     float3 color = 0.0;
     bool hit = false;
     float3 tint = 1.0;
     int face = 0;
+
     for (int i = 0; i < 256; i++) {
         Voxel voxel = fetcher.fetch((int3)floored_pos);
 
@@ -111,9 +112,9 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
 
                 // adds 2 padding bits to the right at the start
                 // IT WORKS!!!
-                uint funny_index_magic = voxel_indices[(uint3)floored_pos];
-                uint funny_index = funny_index_magic & ~(0b111111 << (31 - 6));
-                uint enabled_faces = (funny_index_magic >> (31 - 6)) & 0b111111;
+                uint funny_index_magic = voxels_indices[(uint3)floored_pos];
+                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                uint enabled_faces = (funny_index_magic >> (32 - 6)) & 0b111111;
                 uint face2 = global_face(face, dir_sign);
 
 
@@ -134,11 +135,26 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.uv = floor(uv * 8) / 7;
                 solver.face = face;
                 solver.sign = dir_sign;
-                
-                float ao = solver.ao();
-                color = light(fetcher, (uint3)floored_pos, world, uv, normal, ao) * cached_color;
-                //color = cached_color;
 
+                float ao = solver.ao();
+                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
+                //color = cached_color;
+                //color = sky(reflect(ray_dir, normalize(uv - 0.5)));
+
+                /*
+                if (id.x % 20 > 10) {
+                    color = (uint3)floored_pos / 50.0;
+                    //color = (floor(uv * 4.0) / 3.0 + floored_pos) / 100;
+                } else {
+                    color = surface_data.colors[converted_to_flat_index].xyz / 50.0;
+                }
+                */
+
+                float iterations = 0.0;
+                // bool hit = Voxel.from_raw(voxels[(uint3)(floored_pos + int3(0, 1, 0) + normal)]).active;
+                //bool hit = raymarch_do_the_funny(voxels, normalize(sun), world - ray_dir * 0.01, iterations);
+                //color = hit ? 1.0 : 0.0;
+                //color = floor(world - ray_dir * 0.01) - world;
 
                 //color = float3(pixels / 3.0 == 1.0, 0);
                 //color = ;
@@ -154,15 +170,17 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     }
 
     if (!hit) {
-        color = sky(ray_dir);
+        color = sky(sun.xyz, ray_dir);
     }
 
     color *= tint;
     color = clamp(pow(aces(color * 1.3), 1 / 2.2), 0, 1);
     
+    /*
     int depth = 6;
     uint3 compressed = (uint3)(color * (float)(1 << depth));
     color = (float3)compressed / (float)(1 << depth);
+    */
     
     output[id.xy] = float4(color, 0);
 }
