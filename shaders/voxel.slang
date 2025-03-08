@@ -28,17 +28,15 @@ void main(uint3 id: SV_DispatchThreadID) {
 
     if (hash12(floor(id.xz / 4)) > 0.99) {
         if (hash13(id) > 0.8) {
-            base -= 10;
+            base -= 30;
             refractive = true;
         }
 
-        /*
-        if (hash12(id.xz) > 0.5) {
-            refractive = true;
-        } else {
+        // TODO: reflections don't work with the current shadow surface optimization1!!!
+        if (hash12(id.xz) > 0.2) {
+            //base -= 30;
             //reflective = true;
         }
-        */
     }
 
     Voxel voxel;
@@ -48,77 +46,142 @@ void main(uint3 id: SV_DispatchThreadID) {
     voxels[id] = voxel.into_raw();
 }
 
+static const int3[] offsets = {
+    int3(1, 0, 0),
+    int3(-1, 0, 0),
+    int3(0, 1, 0),
+    int3(0, -1, 0),
+    int3(0, 0, 1),
+    int3(0, 0, -1),
+};
+
+uint calculate_enabled_faces(uint3 id, float3 camera, float3 forward) {
+    float3 diff = normalize((float3)id - camera + 0.5);
+
+    bool block_visible = dot(forward, diff) > 0.0;
+    if (!block_visible) {
+        //return 0;
+    }
+
+    uint enabled_faces = 0;
+
+    for (int i = 0; i < 6; i++) {
+        Voxel neighbour = Voxel.from_raw(voxels[id + offsets[i]]);
+        bool face_visible_neighbour = !neighbour.active || neighbour.refractive;
+        bool face_visible_camera = dot(offsets[i], diff) < 0.0;
+        if (face_visible_neighbour /* && face_visible_camera */) {
+            enabled_faces |= 1 << i;
+        }
+    }
+
+    return enabled_faces;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 8)]
 void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun) {
     if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0) {
-        //voxels[id - uint3(0, 1, 0)] = voxels[id];
-        //voxels[id] = 0;
+        voxels[id - uint3(0, 1, 0)] = voxels[id];
+        voxels[id] = 0;
     }
 
     AllMemoryBarrier();
 
-    float3 diff = normalize((float3)id - position.xyz + 0.5);
-    bool block_visible = dot(forward.xyz, diff) > 0.0;
-    if ((voxels[id] & 1) == 1 && block_visible) {
-        static const int3[] offsets = {
-            int3(1, 0, 0),
-            int3(-1, 0, 0),
-            int3(0, 1, 0),
-            int3(0, -1, 0),
-            int3(0, 0, 1),
-            int3(0, 0, -1),
-        };
+    uint enabled_faces = calculate_enabled_faces(id, position.xyz, forward.xyz);
+    // enabled_faces = 0b100101;
 
-        uint enabled_faces = 0;
+    if (enabled_faces == 0) {
+        voxel_indices[id] = -1;
+        return;
+    }
 
-        for (int i = 0; i < 6; i++) {
-            Voxel neighbour = Voxel.from_raw(voxels[id + offsets[i]]);
-            bool face_visible_neighbour = !neighbour.active || neighbour.refractive;
-            bool face_visible_camera = dot(offsets[i], diff) < 0.0;
-            if (face_visible_neighbour && face_visible_camera) {
-                enabled_faces |= 1 << i;
-            }
+    if ((voxels[id] & 1) == 1 && enabled_faces > 0) {
+        uint original = 0;
+        InterlockedAdd(counter[0], countbits(enabled_faces), original);
+        uint some_magic = original;
+        some_magic |= enabled_faces << (32 - 6);
+        voxel_indices[id] = some_magic;
+
+        for (int i = 0; i < countbits(enabled_faces); i++) {
+            SurfaceData data;
+            data.colors[0] = 0;
+            surface_data_buffer[original + i] = data;
         }
+    }
 
-        //enabled_faces = 0b100101;
-        if (enabled_faces > 0) {
-            uint original = 0;
-            InterlockedAdd(counter[0], countbits(enabled_faces), original);
+    AllMemoryBarrier();
 
-            uint indexu = 0;
-            for (int i = 0; i < 6; i++) {
-                if (((enabled_faces >> i) & 1) == 1) {
-                    SurfaceData data;
+    if ((voxels[id] & 1) == 1 && enabled_faces > 0) {
+        uint indexu = 0;
+        for (int i = 0; i < 6; i++) {
+            if (((enabled_faces >> i) & 1) == 1) {
 
-                    /*
-                    for (int s = 0; s < 8; s++) {
-                        if (raymarch_do_the_funny(voxels, normalize(sun + (hash33(s * float3(2.12321, 5.3434, -34.2323))-0.5)*0.2), (float3)id + (float3)offsets[i] * 1 + 0.5)) {
-                            totals++;
-                        }
-                    }
-                    */
 
-                    float3 color = 0;
-                    for (int k = 0; k < 16; k++) {
-                        uint2 uv = uint2(k % 4, k / 4);
-                        uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
-                        float3 world_pos = id + 0.125 + (unflattened / 4.0);
-                        float3 shadow_color = dda_shadownate(voxels, normalize(sun.xyz), world_pos + offsets[i] * 0.15, 0.2);
-                        color = shadow_color;
-                        data.colors[k] = uint8_t4(clamp(color, 0, 1) * 255, 0);
-                    }
+                /*
+                float3 color = 0;
+                for (int k = 0; k < 16; k++) {
+                    uint2 uv = uint2(k % 4, k / 4);
+                    uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
+                    float3 world_pos = id + offsets[i] * 0.25 + unflattened / 4.0;
+                    // FIXME: still broken btw... on {x,y,z} = 0...
+                    float3 shadow_color = 0.0;
                     
-                    surface_data_buffer[original + indexu] = data;
-                    indexu++;
-                }
-            }
 
-            uint some_magic = original;
-            some_magic |= enabled_faces << (32 - 6);
-            voxel_indices[id] = some_magic;
-        } else {
-            voxel_indices[id] = -1;
+
+                    float3 ray_dir = -normalize(position.xyz - world_pos);
+                    float3 reflected = reflect(ray_dir, offsets[i]);
+
+
+                    
+                    uint3 target = dda_shadownate2(voxels, reflected, world_pos);
+                }
+                */
+
+                /*
+                float3 world_pos = id + offsets[i] * 0.25;
+                float3 ray_dir = -normalize(position.xyz - world_pos);
+                float3 reflected = reflect(ray_dir, offsets[i]);
+                uint face = 0;
+                float3 dir_sign = sign(ray_dir);
+                uint3 target = dda_shadownate2(voxels, reflected, world_pos, face);
+                */
+
+                uint3 target = id;
+                uint funny_index_magic = voxel_indices[target];
+                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
+                // uint face2 = global_face(face, dir_sign);
+
+                // uint face2 = global_face(face, dir_sign);
+                uint face2 = 0;
+
+                uint enabled_faces2_copy = (enabled_faces2 << (6 - face2)) & 0b111111;
+                int packed_face_index = countbits(enabled_faces2_copy);
+
+                if (((enabled_faces2 >> face2) & 1) == 1) {
+                    SurfaceData data;
+                    data.colors[0] = uint8_t4(target, 0);
+                    surface_data_buffer[funny_index + packed_face_index] = data;
+                }
+
+
+
+                indexu++;
+            }
         }
     }    
 }
+
+/*
+shadow_color = dda_shadownate(voxels, reflected, world_pos);
+color = shadow_color;
+data.colors[k] = uint8_t4(clamp(color, 0, 1) * 255, 0);
+*/
+
+/*
+// FIXME: this is *slightly* slow... kek (ts so ass ts so slow ts pmo ngl no cap)
+for (int killme = 0; killme < 16; killme++) {
+    shadow_color += dda_shadownate(voxels, normalize(sun.xyz + (hash33(id + i * 123.12 + k * -432.32 + killme * 5456.23) - 0.5) * 0.05), world_pos);
+}
+color = shadow_color / 16.0;
+*/

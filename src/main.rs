@@ -20,9 +20,11 @@ mod ticker;
 use ash;
 use ash::vk;
 use gpu_allocator::vulkan::Allocation;
+use input::Button;
 use input::Input;
 use movement::Movement;
 use pipeline::PushConstants2;
+use winit::event::MouseButton;
 use std::collections::HashMap;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -204,7 +206,7 @@ impl InternalApp {
         ) = pipeline::create_compute_voxel_pipelines(&*assets["voxel.spv"], &device);
         log::info!("created voxel compute pipeline");
 
-        let voxel_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE);
+        let voxel_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_DST);
         let voxel_surface_index_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R32_UINT, vk::ImageUsageFlags::STORAGE);
         let voxel_surface_buffer = voxel::create_voxel_surface_buffer(&device, &mut allocator);
         let voxel_surface_counter_buffer = voxel::create_voxel_counter_buffer(&device, &mut allocator);
@@ -255,12 +257,28 @@ impl InternalApp {
             allocator,
             voxel_image,
             rt_images,
-            ticker: ticker::Ticker { ticks_per_second: 16f32, accumulator: 0f32 },
+            ticker: ticker::Ticker { ticks_per_second: 20f32, accumulator: 0f32 },
             voxel_surface_buffer,
             voxel_surface_index_image,
             voxel_surface_counter_buffer,
             sun: vek::Vec3::unit_y(),
         }
+    }
+
+    pub unsafe fn click(&mut self) {
+        let forward = vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32);
+        let position = (self.movement.position + forward * 2.0).map(|x| x as u32);
+
+
+        voxel::update_voxel(
+            &self.device,
+            &mut self.allocator,
+            self.queue,
+            self.pool,
+            self.voxel_image.0,
+            u8::MAX,
+            position,
+        )
     }
 
     pub unsafe fn resize(&mut self, width: u32, height: u32) {
@@ -724,6 +742,10 @@ impl ApplicationHandler for App {
                     } else {
                         inner.window.set_fullscreen(None);
                     }
+                }
+
+                if inner.input.get_button(Button::Mouse(MouseButton::Left)).held() {
+                    inner.click();
                 }
 
                 inner.window.request_redraw();

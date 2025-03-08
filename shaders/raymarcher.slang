@@ -17,21 +17,7 @@ float sdf(float3 pos) {
     return min(pos.y, length(pos) - 15 + sin(pos.x * 3.0) * 0.6f);
 }
 
-float3 normal(int face, float3 sign) {
-    return -(float3)(face == int3(0,1,2)) * sign;
-}
 
-int global_face(int face, float3 sign) {
-    if (face == 0) {
-        return sign.x > 0 ? 1 : 0;
-    } else if (face == 1) {
-        return sign.y > 0 ? 3 : 2;
-    } else if (face == 2) {
-        return sign.z > 0 ? 5 : 4;
-    }
-
-    return -1;
-}
 
 [shader("compute")]
 [numthreads(32, 32, 1)]
@@ -43,7 +29,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     uvs.x = -uvs.x;
 
     float3 ray_dir = normalize((mul(mat, float4(uvs, 1, 0))).xyz);
-    float3 ray_pos = position.xyz;
+    float3 ray_pos = position.xyz + ray_dir * hash12((float2)(id.xy / 4) * float2(231.2312, 32.32423));
     float3 floored_pos = floor(ray_pos);
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
@@ -56,7 +42,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     float3 tint = 1.0;
     int face = 0;
 
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 128; i++) {
         Voxel voxel = fetcher.fetch((int3)floored_pos);
 
         if (voxel.active) {
@@ -137,16 +123,18 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.sign = dir_sign;
 
                 float ao = solver.ao();
-                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
-                //color = cached_color;
+                float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
+                // color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
+                // color = cached_color;
+                color = float3(surface_data.colors[0].xyz / 255.0);
                 //color = sky(reflect(ray_dir, normalize(uv - 0.5)));
 
                 /*
-                if (id.x % 20 > 10) {
-                    color = (uint3)floored_pos / 50.0;
+                if (id.y % 200 > 100) {
+                    color = test * ao;
                     //color = (floor(uv * 4.0) / 3.0 + floored_pos) / 100;
                 } else {
-                    color = surface_data.colors[converted_to_flat_index].xyz / 50.0;
+                    color = cached_color * ao;
                 }
                 */
 

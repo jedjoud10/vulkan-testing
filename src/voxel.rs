@@ -165,7 +165,7 @@ pub unsafe fn generate_voxel_image(
         .old_layout(vk::ImageLayout::UNDEFINED)
         .new_layout(vk::ImageLayout::GENERAL)
         .src_access_mask(vk::AccessFlags2::NONE)
-        .dst_access_mask(vk::AccessFlags2::SHADER_WRITE)
+        .dst_access_mask(vk::AccessFlags2::SHADER_WRITE | vk::AccessFlags2::TRANSFER_WRITE)
         .src_stage_mask(vk::PipelineStageFlags2::NONE)
         .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         .src_queue_family_index(queue_family_index)
@@ -436,7 +436,7 @@ pub unsafe fn update_voxel_thingies(
         .old_layout(vk::ImageLayout::GENERAL)
         .new_layout(vk::ImageLayout::GENERAL)
         .src_access_mask(vk::AccessFlags2::SHADER_WRITE)
-        .dst_access_mask(vk::AccessFlags2::SHADER_READ | vk::AccessFlags2::MEMORY_READ)
+        .dst_access_mask(vk::AccessFlags2::SHADER_READ | vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::TRANSFER_WRITE)
         .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         .src_queue_family_index(queue_family_index)
@@ -480,3 +480,88 @@ pub unsafe fn update_voxel_thingies(
     device.cmd_pipeline_barrier2(cmd, &dep);
     return descriptor_set;
 }
+
+pub unsafe fn update_voxel(
+    device: &ash::Device,
+    allocator: &mut Allocator,
+    queue: vk::Queue,
+    pool: vk::CommandPool,
+    voxel_image: vk::Image,
+    voxel: u8,
+    position: vek::Vec3<u32>,
+) {
+    let src_create_info = vk::BufferCreateInfo::default()
+        .flags(vk::BufferCreateFlags::empty())
+        .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .size(1);
+    let src = device.create_buffer(&src_create_info, None).unwrap();
+
+    let requirements = device.get_buffer_memory_requirements(src);
+    let mut allocation = allocator
+        .allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
+            name: "Staging Buffer...",
+            requirements: requirements,
+            linear: true,
+            allocation_scheme: gpu_allocator::vulkan::AllocationScheme::DedicatedBuffer(src),
+            location: gpu_allocator::MemoryLocation::CpuToGpu,
+        })
+        .unwrap();
+    let device_memory = allocation.memory();
+    device.bind_buffer_memory(src, device_memory, 0).unwrap();
+    let raw = allocation.mapped_slice_mut().unwrap();
+    raw.copy_from_slice(&[voxel]);
+
+    let cmd_buffer_create_info = vk::CommandBufferAllocateInfo::default()
+        .command_buffer_count(1)
+        .level(vk::CommandBufferLevel::PRIMARY)
+        .command_pool(pool);
+    let cmd = device
+        .allocate_command_buffers(&cmd_buffer_create_info)
+        .unwrap()[0];
+    device.begin_command_buffer(cmd, &Default::default()).unwrap();
+
+    let subresource_layers = vk::ImageSubresourceLayers::default()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .base_array_layer(0)
+        .layer_count(1)
+        .mip_level(0);
+
+    let region = vk::BufferImageCopy2::default()
+        .buffer_offset(0)
+        .buffer_image_height(0)
+        .buffer_row_length(0)
+        .image_offset(vk::Offset3D {
+            x: position.x as i32,
+            y: position.y as i32,
+            z: position.z as i32,
+        })
+        .image_extent(vk::Extent3D {
+            width: 1,
+            height: 1,
+            depth: 1,
+        }).image_subresource(subresource_layers);
+
+    let regions = [region];
+    let copy_buffer_to_image_info = vk::CopyBufferToImageInfo2::default()
+        .dst_image(voxel_image)
+        .dst_image_layout(vk::ImageLayout::GENERAL)
+        .regions(&regions)
+        .src_buffer(src);
+
+    device.cmd_copy_buffer_to_image2(cmd, &copy_buffer_to_image_info);
+    
+    let buffers = [cmd];
+    let submit = vk::SubmitInfo::default()
+        .command_buffers(&buffers);
+
+    device.end_command_buffer(cmd).unwrap();
+
+    let fence = device.create_fence(&Default::default(), None).unwrap();
+    device.queue_submit(queue, & [submit], fence).unwrap();
+    device.wait_for_fences(&[fence], true, u64::MAX).unwrap();
+    device.destroy_fence(fence, None);
+    allocator.free(allocation).unwrap();
+    device.destroy_buffer(src, None);
+}
+

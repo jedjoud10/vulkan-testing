@@ -71,13 +71,42 @@ struct Fetcher {
     }
 }
 
+uint3 dda_shadownate2(
+    RWTexture3D<uint8_t> voxels,
+    float3 ray_dir,
+    float3 ray_pos,
+    out uint face,
+) {
+    float3 floored_pos = floor(ray_pos);
+    float3 inv_dir = 1 / ray_dir;
+    float3 dir_sign = sign(ray_dir);
+    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
+    Fetcher fetcher = Fetcher(voxels, size);
+    face = 0;
+
+    for (int i = 0; i < 32; i++) {
+        Voxel voxel = fetcher.fetch((int3)(floored_pos));
+
+        if (voxel.active && !voxel.refractive) {
+            return (uint3)floored_pos;
+        }
+
+        float3 reconst = side_dist * inv_dir;
+        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
+        face = firstbithigh(eqs.x | eqs.y << 1 | eqs.z << 2);
+        floored_pos += dir_sign * eqs;
+        side_dist += dir_sign * eqs;
+    }
+
+    return 0;
+}
+
 float3 dda_shadownate(
     RWTexture3D<uint8_t> voxels,
     float3 ray_dir,
     float3 ray_pos,
-    float base_shadow,
 ) {
-    float3 floored_pos = ceil(ray_pos);
+    float3 floored_pos = floor(ray_pos);
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
@@ -85,18 +114,81 @@ float3 dda_shadownate(
     float3 color = 1.0;
 
     for (int i = 0; i < 32; i++) {
-        Voxel voxel = fetcher.fetch((int3)(floored_pos) - 1);
+        Voxel voxel = fetcher.fetch((int3)(floored_pos));
 
         if (voxel.active && voxel.refractive) {
             color *= normalize(hash33(floor(floored_pos) * float3(23.231, -435.4354, 9412.1)));
         }
 
         if (voxel.active && !voxel.refractive) {
-            return base_shadow;
+            return 0.0;
         }
 
         float3 reconst = side_dist * inv_dir;
         int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
+        floored_pos += dir_sign * eqs;
+        side_dist += dir_sign * eqs;
+    }
+
+    return color;
+}
+
+float3 normal(int face, float3 sign) {
+    return -(float3)(face == int3(0, 1, 2)) * sign;
+}
+
+int global_face(int face, float3 sign) {
+    if (face == 0) {
+        return sign.x > 0 ? 1 : 0;
+    } else if (face == 1) {
+        return sign.y > 0 ? 3 : 2;
+    } else if (face == 2) {
+        return sign.z > 0 ? 5 : 4;
+    }
+
+    return -1;
+}
+
+float3 amogus(
+    float3 world,
+    float3 normal,
+) {
+    return normal;
+}
+
+float3 dda_gi(
+    RWTexture3D<uint8_t> voxels,
+    float3 ray_dir,
+    float3 ray_pos,
+) {
+    float3 floored_pos = floor(ray_pos);
+    float3 inv_dir = 1 / ray_dir;
+    float3 dir_sign = sign(ray_dir);
+    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
+    Fetcher fetcher = Fetcher(voxels, size);
+    float3 color = 1.0;
+    int face = 0;
+
+    for (int i = 0; i < 32; i++) {
+        Voxel voxel = fetcher.fetch((int3)(floored_pos));
+        float3 normal = normal(face, dir_sign);
+
+        float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
+        float max = max3(test.x, test.y, test.z);
+        float3 world = ray_pos + ray_dir * max;
+
+        if (voxel.active) {
+            ray_dir = reflect(ray_dir, normal);
+            inv_dir = 1 / ray_dir;
+            dir_sign = sign(ray_dir);
+            side_dist = (floored_pos - world + 0.5 + 0.5 * dir_sign);
+            ray_pos = world;
+            //tint *= normalize(hash33(floor(floored_pos) * float3(23.231, -435.4354, 9412.1)));
+        }
+
+        float3 reconst = side_dist * inv_dir;
+        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
+        face = firstbithigh(eqs.x | eqs.y << 1 | eqs.z << 2);
         floored_pos += dir_sign * eqs;
         side_dist += dir_sign * eqs;
     }
