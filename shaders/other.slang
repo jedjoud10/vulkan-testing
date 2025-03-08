@@ -84,11 +84,11 @@ uint3 dda_shadownate2(
     Fetcher fetcher = Fetcher(voxels, size);
     face = 0;
 
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < 16; i++) {
         Voxel voxel = fetcher.fetch((int3)(floored_pos));
 
         if (voxel.active && !voxel.refractive) {
-            return (uint3)floored_pos;
+            return (uint3)((int3)floored_pos);
         }
 
         float3 reconst = side_dist * inv_dir;
@@ -149,11 +149,10 @@ int global_face(int face, float3 sign) {
     return -1;
 }
 
-float3 amogus(
-    float3 world,
+uint3 amogus(
     float3 normal,
 ) {
-    return normal;
+    return clamp(normal * 0.5 + 0.5, 0, 1) * 64;
 }
 
 float3 dda_gi(
@@ -197,7 +196,8 @@ float3 dda_gi(
 }
 
 struct SurfaceData {
-    uint8_t4[4 * 4] colors;
+    //uint8_t4[4 * 4] colors;
+    uint3 other;
 }
 
 #endif

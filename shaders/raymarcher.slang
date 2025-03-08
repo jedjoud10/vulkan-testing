@@ -113,7 +113,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 uint2 pixels = (uint2)(floor(flat * 4));
                 uint converted_to_flat_index = pixels.x + pixels.y * 4;
                 
-                float3 cached_color = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+                //float3 cached_color = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
 
                 ao_solver solver;
                 solver.fetcher = fetcher;
@@ -125,8 +125,9 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 float ao = solver.ao();
                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 // color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
-                // color = cached_color;
-                color = float3(surface_data.colors[0].xyz / 255.0);
+                //color = cached_color;
+                // color = float3(surface_data.colors[0].xyz / 255.0);
+                color = float3(surface_data.other / 255.0) * 0.1;
                 //color = sky(reflect(ray_dir, normalize(uv - 0.5)));
 
                 /*

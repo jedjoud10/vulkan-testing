@@ -58,6 +58,7 @@ pub unsafe fn create_voxel_image(
     let voxel_image_view = device
         .create_image_view(&voxel_image_view_create_info, None)
         .unwrap();
+
     (voxel_image, allocation, voxel_image_view)
 }
 
@@ -565,3 +566,15 @@ pub unsafe fn update_voxel(
     device.destroy_buffer(src, None);
 }
 
+#[derive(Clone, Copy)]
+pub struct Voxel {
+    pub active: bool,
+    pub reflective: bool,
+    pub refractive: bool,
+}
+
+impl Voxel {
+    pub fn into_raw(self) -> u8 {
+        self.active as u8 | (self.reflective as u8) << 1 | (self.refractive as u8) << 2
+    }
+}

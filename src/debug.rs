@@ -7,7 +7,8 @@ pub unsafe fn create_debug_messenger_create_info() -> vk::DebugUtilsMessengerCre
     vk::DebugUtilsMessengerCreateInfoEXT::default()
         .message_severity(
             vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
         )
         .message_type(
             vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
@@ -76,13 +77,23 @@ pub unsafe extern "system" fn debug_callback(
             &message_id_number.to_string(),
             message.to_str().unwrap(),
         ),
-        INFO => log::info!(
-            "{:?} [{} ({})] : {}\n",
-            message_type,
-            message_id_name.to_str().unwrap(),
-            &message_id_number.to_string(),
-            message.to_str().unwrap(),
-        ),
+        INFO => {
+            if (message_id_number == 0x4fe1fef9) {
+                let bruh = message.to_str().unwrap().split('|').collect::<Vec<&str>>();
+                let concat = bruh[2..].join("|");
+                log::info!("{}",
+                    concat.trim(),
+                )
+            } else {
+                log::info!(
+                    "{:?} [{} ({})] : {}\n",
+                    message_type,
+                    message_id_name.to_str().unwrap(),
+                    &message_id_number.to_string(),
+                    message.to_str().unwrap(),
+                )
+            }
+        },
         WARNING => log::warn!(
             "{:?} [{} ({})] : {}\n",
             message_type,

@@ -261,11 +261,11 @@ impl InternalApp {
             voxel_surface_buffer,
             voxel_surface_index_image,
             voxel_surface_counter_buffer,
-            sun: vek::Vec3::unit_y(),
+            sun: vek::Vec3::unit_y() + vek::Vec3::unit_x(),
         }
     }
 
-    pub unsafe fn click(&mut self) {
+    pub unsafe fn click(&mut self, add: bool) {
         let forward = vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32);
         let position = (self.movement.position + forward * 2.0).map(|x| x as u32);
 
@@ -276,7 +276,11 @@ impl InternalApp {
             self.queue,
             self.pool,
             self.voxel_image.0,
-            u8::MAX,
+            voxel::Voxel {
+                active: add,
+                reflective: false,
+                refractive: false,
+            }.into_raw(),
             position,
         )
     }
@@ -744,8 +748,11 @@ impl ApplicationHandler for App {
                     }
                 }
 
-                if inner.input.get_button(Button::Mouse(MouseButton::Left)).held() {
-                    inner.click();
+                let left = inner.input.get_button(Button::Mouse(MouseButton::Left)).held();
+                let right = inner.input.get_button(Button::Mouse(MouseButton::Right)).held();
+
+                if left || right {
+                    inner.click(left);
                 }
 
                 inner.window.request_redraw();

@@ -11,12 +11,13 @@ RWStructuredBuffer<SurfaceData> surface_data_buffer;
 RWTexture3D<uint> voxel_indices;
 
 [[vk::binding(3, 0)]]
-RWStructuredBuffer<uint> counter;
+RWStructuredBuffer<Atomic<uint>> counter;
 
 [shader("compute")]
 [numthreads(8, 8, 8)]
 void main(uint3 id: SV_DispatchThreadID) {
     int base = (int)(noise((float2)id.xz * 0.1) * 10) + id.y - 15;
+    base = id.y - 15;
     //base += hash13(id) * 4;
     bool reflective = false;
     bool refractive = false;
@@ -80,7 +81,7 @@ uint calculate_enabled_faces(uint3 id, float3 camera, float3 forward) {
 [shader("compute")]
 [numthreads(8, 8, 8)]
 void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun) {
-    if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0) {
+    if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0 && (voxels[id] & 4) == 4) {
         voxels[id - uint3(0, 1, 0)] = voxels[id];
         voxels[id] = 0;
     }
@@ -90,86 +91,99 @@ void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4
     uint enabled_faces = calculate_enabled_faces(id, position.xyz, forward.xyz);
     // enabled_faces = 0b100101;
 
+    voxel_indices[id] = -1;
     if (enabled_faces == 0) {
-        voxel_indices[id] = -1;
         return;
     }
 
+    uint original = 0;
     if ((voxels[id] & 1) == 1 && enabled_faces > 0) {
-        uint original = 0;
-        InterlockedAdd(counter[0], countbits(enabled_faces), original);
+        original = counter[0].add(countbits(enabled_faces), MemoryOrder.Relaxed);
         uint some_magic = original;
         some_magic |= enabled_faces << (32 - 6);
         voxel_indices[id] = some_magic;
 
         for (int i = 0; i < countbits(enabled_faces); i++) {
             SurfaceData data;
-            data.colors[0] = 0;
+            data.other = 0;
             surface_data_buffer[original + i] = data;
         }
     }
 
     AllMemoryBarrier();
-
     if ((voxels[id] & 1) == 1 && enabled_faces > 0) {
         uint indexu = 0;
         for (int i = 0; i < 6; i++) {
             if (((enabled_faces >> i) & 1) == 1) {
 
-
                 /*
-                float3 color = 0;
+                SurfaceData data;
                 for (int k = 0; k < 16; k++) {
                     uint2 uv = uint2(k % 4, k / 4);
                     uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
-                    float3 world_pos = id + offsets[i] * 0.25 + unflattened / 4.0;
+                    float3 world_pos = id + 0.25 + offsets[i] * 0.25 + unflattened / 4.0 - sun.xyz * 0.05;
                     // FIXME: still broken btw... on {x,y,z} = 0...
-                    float3 shadow_color = 0.0;
-                    
-
-
-                    float3 ray_dir = -normalize(position.xyz - world_pos);
-                    float3 reflected = reflect(ray_dir, offsets[i]);
-
-
-                    
-                    uint3 target = dda_shadownate2(voxels, reflected, world_pos);
+                    float3 shadow_color = dda_shadownate(voxels, sun.xyz, world_pos);
+                    data.colors[k] = uint8_t4(clamp(shadow_color, 0, 1) * 255, 0);
                 }
+
+                surface_data_buffer[original + indexu] = data;
                 */
+
+                float3 amogsun = sun.xyz;
+                for (int k = 0; k < 16; k++) {
+                    float3 world_pos = id + 0.5 + offsets[i] * 1.0 - amogsun * 0.1;
+                    float3 reflected = reflect(-amogsun, normalize(offsets[i] + (hash33(k * 2.43243 + id * 232.342) - 0.5) * 0.0));
+                    uint face = 0;
+                    float3 dir_sign = sign(reflected);
+                    uint3 target = dda_shadownate2(voxels, reflected, world_pos, face);
+
+                    if (all(target > 0)) {
+                        uint funny_index_magic = voxel_indices[target];
+
+                        uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                        uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
+                        uint face2 = global_face(face, dir_sign);
+                        float3 normal = normal(face, dir_sign);
+
+                        uint enabled_faces2_copy = (enabled_faces2 << (6 - face2)) & 0b111111;
+                        int packed_face_index = countbits(enabled_faces2_copy);
+
+                        if (((enabled_faces2 >> face2) & 1) == 1 && dot((float3)offsets[i], amogsun) > 0) {
+                            // surface_data_buffer[funny_index + packed_face_index].other = clamp(offsets[i], 0, 1) * 255;
+                            uint3 adder = amogus((float3)offsets[i]);
+                            InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.x, adder.x);
+                            InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.y, adder.y);
+                            InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.z, adder.z);
+                        }
+                    }
+                }
 
                 /*
-                float3 world_pos = id + offsets[i] * 0.25;
-                float3 ray_dir = -normalize(position.xyz - world_pos);
-                float3 reflected = reflect(ray_dir, offsets[i]);
+                float3 world_pos = id + 0.5 + offsets[i] * 1.0 - amogsun * 0.1;
+                float3 reflected = reflect(-amogsun, normalize(offsets[i]));
                 uint face = 0;
-                float3 dir_sign = sign(ray_dir);
+                float3 dir_sign = sign(reflected);
                 uint3 target = dda_shadownate2(voxels, reflected, world_pos, face);
-                */
 
-                uint3 target = id;
-                uint funny_index_magic = voxel_indices[target];
-                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
-                uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
-                // uint face2 = global_face(face, dir_sign);
-
-                // uint face2 = global_face(face, dir_sign);
-                uint face2 = 0;
-
-                uint enabled_faces2_copy = (enabled_faces2 << (6 - face2)) & 0b111111;
-                int packed_face_index = countbits(enabled_faces2_copy);
-
-                if (((enabled_faces2 >> face2) & 1) == 1) {
-                    SurfaceData data;
-                    data.colors[0] = uint8_t4(target, 0);
-                    surface_data_buffer[funny_index + packed_face_index] = data;
+                SurfaceData data;
+                if (all(target > 0) && dot((float3)offsets[i], sun.xyz) > 0) {
+                    data.other = clamp(offsets[i], 0, 1) * 255;
+                } else {
+                    data.other = 0;
                 }
 
-
+                //data.other = clamp(reflected, 0, 1) * 255;
+                //data.other = id;
+                surface_data_buffer[original + indexu] = data;
+                */
 
                 indexu++;
             }
         }
-    }    
+    }
+
+    AllMemoryBarrier();
 }
 
 /*
