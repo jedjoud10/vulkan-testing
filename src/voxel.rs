@@ -1,3 +1,5 @@
+use std::ffi::CStr;
+
 use ash::vk;
 use gpu_allocator::vulkan::{Allocation, Allocator};
 
@@ -10,6 +12,8 @@ pub unsafe fn create_voxel_image(
     allocator: &mut Allocator,
     format: vk::Format,
     usage: vk::ImageUsageFlags,
+    binder: &Option<ash::ext::debug_utils::Device>,
+    name: &CStr,
 ) -> (vk::Image, Allocation, vk::ImageView) {
     let voxel_image_create_info = vk::ImageCreateInfo::default()
         .extent(vk::Extent3D {
@@ -30,7 +34,7 @@ pub unsafe fn create_voxel_image(
 
     let allocation = allocator
         .allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
-            name: "Voxel Image Allocation",
+            name: &name.to_string_lossy(),
             requirements: requirements,
             linear: false,
             allocation_scheme: gpu_allocator::vulkan::AllocationScheme::DedicatedImage(voxel_image),
@@ -59,12 +63,20 @@ pub unsafe fn create_voxel_image(
         .create_image_view(&voxel_image_view_create_info, None)
         .unwrap();
 
+    if let Some(binder) = binder {
+        let marker = vk::DebugUtilsObjectNameInfoEXT::default()
+            .object_handle(voxel_image)
+            .object_name(name);
+        binder.set_debug_utils_object_name(&marker).unwrap();
+    }
+    
     (voxel_image, allocation, voxel_image_view)
 }
 
 pub unsafe fn create_voxel_surface_buffer(
     device: &ash::Device,
     allocator: &mut Allocator,
+    binder: &Option<ash::ext::debug_utils::Device>,
 ) -> (vk::Buffer, Allocation) {
     // store semi-worst case scenario?
     // 6 faces per cube, store all faces for now
@@ -92,6 +104,13 @@ pub unsafe fn create_voxel_surface_buffer(
         })
         .unwrap();
 
+    if let Some(binder) = binder {
+        let marker = vk::DebugUtilsObjectNameInfoEXT::default()
+            .object_handle(buffer)
+            .object_name(c"voxel surface buffer");
+        binder.set_debug_utils_object_name(&marker).unwrap();
+    }
+
     
     let device_memory = allocation.memory();
     device.bind_buffer_memory(buffer, device_memory, 0).unwrap();
@@ -102,6 +121,7 @@ pub unsafe fn create_voxel_surface_buffer(
 pub unsafe fn create_voxel_counter_buffer(
     device: &ash::Device,
     allocator: &mut Allocator,
+    binder: &Option<ash::ext::debug_utils::Device>,
 ) -> (vk::Buffer, Allocation) {
     let voxel_buffer_create_info = vk::BufferCreateInfo::default()
         .flags(vk::BufferCreateFlags::empty())
@@ -122,6 +142,12 @@ pub unsafe fn create_voxel_counter_buffer(
         })
         .unwrap();
 
+    if let Some(binder) = binder {
+        let marker = vk::DebugUtilsObjectNameInfoEXT::default()
+            .object_handle(buffer)
+            .object_name(c"voxel index counter buffer");
+        binder.set_debug_utils_object_name(&marker).unwrap();
+    }
     
     let device_memory = allocation.memory();
     device.bind_buffer_memory(buffer, device_memory, 0).unwrap();

@@ -29,7 +29,10 @@ pub unsafe fn create_device_and_queue(
         .storage_buffer8_bit_access(true)
         .shader_int8(true);
 
-    let device_extension_names = vec![ash::khr::swapchain::NAME];
+    let device_extension_names = [
+        ash::khr::swapchain::NAME,
+        ash::ext::debug_marker::NAME,
+    ];
 
     let device_extension_names_ptrs = device_extension_names
         .iter()

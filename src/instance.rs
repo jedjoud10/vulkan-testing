@@ -36,7 +36,6 @@ pub unsafe fn create_instance(
     let enabled_validation_features = [
         #[cfg(debug_assertions)]
         vk::ValidationFeatureEnableEXT::DEBUG_PRINTF,
-        
     ];
     let mut validation_features = ash::vk::ValidationFeaturesEXT::default()
         .enabled_validation_features(&enabled_validation_features);

@@ -1,3 +1,5 @@
+use std::ffi::{CStr, CString};
+
 use ash::vk;
 
 pub unsafe fn create_swapchain(
@@ -7,6 +9,7 @@ pub unsafe fn create_swapchain(
     physical_device: vk::PhysicalDevice,
     device: &ash::Device,
     extent: vk::Extent2D,
+    binder: &Option<ash::ext::debug_utils::Device>,
 ) -> (
     ash::khr::swapchain::Device,
     vk::SwapchainKHR,
@@ -50,12 +53,23 @@ pub unsafe fn create_swapchain(
         .create_swapchain(&swapchain_create_info, None)
         .unwrap();
     let images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
+
+    if let Some(binder) = binder {
+        for (i, image) in images.iter().enumerate() {
+            let name = CString::new(format!("swapchain image {i}")).unwrap();
+            let marker = vk::DebugUtilsObjectNameInfoEXT::default()
+                .object_handle(*image)
+                .object_name(&name);
+            binder.set_debug_utils_object_name(&marker).unwrap();
+        }
+    }
+
     (swapchain_loader, swapchain, images)
 }
 
 pub const SCALING_FACTOR: u32 = 2;
 
-pub unsafe fn create_temporary_target_render_texture(
+pub unsafe fn create_temporary_target_render_image(
     instance: &ash::Instance,
     surface_loader: &ash::khr::surface::Instance,
     surface_khr: vk::SurfaceKHR,
@@ -64,6 +78,8 @@ pub unsafe fn create_temporary_target_render_texture(
     allocator: &mut gpu_allocator::vulkan::Allocator,
     queue_family_index: u32,
     extent: vk::Extent2D,
+    binder: &Option<ash::ext::debug_utils::Device>,
+    name: &CStr
 ) -> (vk::Image, gpu_allocator::vulkan::Allocation) {
     let queue_family_indices = [queue_family_index];
     let surface_formats: Vec<vk::SurfaceFormatKHR> = surface_loader
@@ -102,6 +118,13 @@ pub unsafe fn create_temporary_target_render_texture(
     device
         .bind_image_memory(rt_image, device_memory, 0)
         .unwrap();
+
+    if let Some(binder) = binder {
+        let marker = vk::DebugUtilsObjectNameInfoEXT::default()
+            .object_handle(rt_image)
+            .object_name(name);
+        binder.set_debug_utils_object_name(&marker).unwrap();
+    }
 
     (rt_image, allocation)
 }

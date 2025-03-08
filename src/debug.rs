@@ -42,6 +42,13 @@ pub unsafe fn create_debug_messenger(
     debug_messenger
 }
 
+pub unsafe fn create_debug_marker(
+    instance: &ash::Instance,
+    device: &ash::Device,
+) -> ash::ext::debug_utils::Device {
+    ash::ext::debug_utils::Device::new(instance, device)
+}
+
 #[cfg(debug_assertions)]
 pub unsafe extern "system" fn debug_callback(
     message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,

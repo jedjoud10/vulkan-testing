@@ -6,7 +6,8 @@ float3 sky(float3 sun, float3 dir, bool enable_sun = true) {
     float3 sky1 = pow(float3(52, 186, 235) / 255.0, 2.2);
     float3 sky2 = pow(float3(20, 45, 105) / 255.0, 2.2);
     float3 color = lerp(sky1, sky2, dir.y);
-    return color + pow(max(dot(dir, sun), 0), 3000) * (enable_sun ? 10.0 : 0.0);
+    float directed = max(dot(dir, sun), 0) * (enable_sun ? 1.0 : 0.0);
+    return color + pow(directed, 3000) * 10 + pow(directed, 50) * 0.1;
 }
 
 float2 flatten_uvs(int face, float3 dir_sign, float3 uvs) {
@@ -140,7 +141,7 @@ struct ao_solver {
         }
 
         float4 selected = select(c, 1, 0);
-        float interpolated = 1 - pow(lerp(lerp(selected.x, selected.y, uv[b]), lerp(selected.z, selected.w, uv[b]), uv[a]), 2);
+        float interpolated = 1 - lerp(lerp(selected.x, selected.y, uv[b]), lerp(selected.z, selected.w, uv[b]), uv[a]);
         return interpolated;
     }
 

@@ -195,9 +195,11 @@ float3 dda_gi(
     return color;
 }
 
+static const uint8_t4[4 * 4] null_data = { uint8_t4(0,0,0,0) };
+
 struct SurfaceData {
-    //uint8_t4[4 * 4] colors;
-    uint3 other;
+    uint8_t4[4 * 4] colors;
+    //uint3 other;
 }
 
 #endif

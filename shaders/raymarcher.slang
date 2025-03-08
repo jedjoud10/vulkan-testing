@@ -42,7 +42,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     float3 tint = 1.0;
     int face = 0;
 
-    for (int i = 0; i < 128; i++) {
+    for (int i = 0; i < 64; i++) {
         Voxel voxel = fetcher.fetch((int3)floored_pos);
 
         if (voxel.active) {
@@ -99,21 +99,27 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 // adds 2 padding bits to the right at the start
                 // IT WORKS!!!
                 uint funny_index_magic = voxels_indices[(uint3)floored_pos];
-                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
-                uint enabled_faces = (funny_index_magic >> (32 - 6)) & 0b111111;
-                uint face2 = global_face(face, dir_sign);
 
+                float3 cached_color = 1.0;
+                if (funny_index_magic != -1) {
+                    uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                    uint enabled_faces = (funny_index_magic >> (32 - 6)) & 0b111111;
+                    uint face2 = global_face(face, dir_sign);
 
-                enabled_faces = (enabled_faces << (6 - face2)) & 0b111111;
-                int packed_face_index = countbits(enabled_faces);
+                    enabled_faces = (enabled_faces << (6 - face2)) & 0b111111;
+                    int packed_face_index = countbits(enabled_faces);
 
-                SurfaceData surface_data = surface_data_buffer[funny_index + packed_face_index];
+                    SurfaceData surface_data = surface_data_buffer[funny_index + packed_face_index];
+
+                    float2 flat = flatten_uvs(face, dir_sign, uv);
+                    uint2 pixels = (uint2)(floor(flat * 4));
+                    uint converted_to_flat_index = pixels.x + pixels.y * 4;
+
+                    cached_color = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+                }
                 
-                float2 flat = flatten_uvs(face, dir_sign, uv);
-                uint2 pixels = (uint2)(floor(flat * 4));
-                uint converted_to_flat_index = pixels.x + pixels.y * 4;
-                
-                //float3 cached_color = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+
+
 
                 ao_solver solver;
                 solver.fetcher = fetcher;
@@ -121,13 +127,14 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.uv = floor(uv * 8) / 7;
                 solver.face = face;
                 solver.sign = dir_sign;
-
                 float ao = solver.ao();
-                float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
-                // color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
+                
+
+                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
+                //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);
-                color = float3(surface_data.other / 255.0) * 0.1;
+                //color = float3(surface_data.other / 255.0) * 0.1;
                 //color = sky(reflect(ray_dir, normalize(uv - 0.5)));
 
                 /*
@@ -139,7 +146,6 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 }
                 */
 
-                float iterations = 0.0;
                 // bool hit = Voxel.from_raw(voxels[(uint3)(floored_pos + int3(0, 1, 0) + normal)]).active;
                 //bool hit = raymarch_do_the_funny(voxels, normalize(sun), world - ray_dir * 0.01, iterations);
                 //color = hit ? 1.0 : 0.0;

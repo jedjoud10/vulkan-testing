@@ -43,7 +43,11 @@ struct InternalApp {
     device: ash::Device,
     instance: ash::Instance,
     physical_device: vk::PhysicalDevice,
-    debug_messenger: Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
+    debug: Option<(
+        ash::ext::debug_utils::Instance,
+        vk::DebugUtilsMessengerEXT
+    )>,
+    debug_marker: Option<ash::ext::debug_utils::Device>,
     surface_loader: ash::khr::surface::Instance,
     surface_khr: vk::SurfaceKHR,
     swapchain_loader: ash::khr::swapchain::Device,
@@ -96,8 +100,11 @@ impl InternalApp {
 
         let instance = instance::create_instance(&entry, raw_display_handle);
         log::info!("created instance");
-        let debug_messenger = debug::create_debug_messenger(&entry, &instance);
-        log::info!("created debug utils messenger");
+        let debug_messenger = debug::create_debug_messenger(&entry, &instance).map(|x| {
+            log::info!("created debug utils messenger");
+            x
+        });
+
         let (surface_loader, surface_khr) = surface::create_surface(&instance, &entry, &window);
         log::info!("created surface");
 
@@ -129,6 +136,12 @@ impl InternalApp {
         let queue_family_indices = [queue_family_index];
         log::info!("created device and fetched main queue");
 
+        let debug_marker = debug_messenger.is_some().then(|| {
+            let device = debug::create_debug_marker(&instance, &device);
+            log::info!("created debug marker object names binder");
+            device
+        });
+
         let mut allocator =
             gpu_allocator::vulkan::Allocator::new(&gpu_allocator::vulkan::AllocatorCreateDesc {
                 instance: instance.clone(),
@@ -159,13 +172,14 @@ impl InternalApp {
             physical_device,
             &device,
             extent,
+            &debug_marker,
         );
         log::info!("created swapchain with {} in-flight images", images.len());
 
         let rt_images: Vec<(vk::Image, Allocation)> = (0..images.len())
             .into_iter()
             .map(|_| {
-                swapchain::create_temporary_target_render_texture(
+                swapchain::create_temporary_target_render_image(
                     &instance,
                     &surface_loader,
                     surface_khr,
@@ -174,6 +188,8 @@ impl InternalApp {
                     &mut allocator,
                     queue_family_index,
                     extent,
+                    &debug_marker,
+                    c"temporary render target image"
                 )
             })
             .collect();
@@ -206,10 +222,10 @@ impl InternalApp {
         ) = pipeline::create_compute_voxel_pipelines(&*assets["voxel.spv"], &device);
         log::info!("created voxel compute pipeline");
 
-        let voxel_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_DST);
-        let voxel_surface_index_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R32_UINT, vk::ImageUsageFlags::STORAGE);
-        let voxel_surface_buffer = voxel::create_voxel_surface_buffer(&device, &mut allocator);
-        let voxel_surface_counter_buffer = voxel::create_voxel_counter_buffer(&device, &mut allocator);
+        let voxel_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_DST, &debug_marker, c"voxel image");
+        let voxel_surface_index_image = voxel::create_voxel_image(&device, &mut allocator, vk::Format::R32_UINT, vk::ImageUsageFlags::STORAGE, &debug_marker, c"voxel image indices");
+        let voxel_surface_buffer = voxel::create_voxel_surface_buffer(&device, &mut allocator, &debug_marker);
+        let voxel_surface_counter_buffer = voxel::create_voxel_counter_buffer(&device, &mut allocator, &debug_marker);
 
         voxel::generate_voxel_image(
             &device,
@@ -237,7 +253,8 @@ impl InternalApp {
             physical_device,
             surface_loader,
             surface_khr,
-            debug_messenger,
+            debug: debug_messenger,
+            debug_marker,
             swapchain_loader,
             swapchain,
             images,
@@ -257,7 +274,7 @@ impl InternalApp {
             allocator,
             voxel_image,
             rt_images,
-            ticker: ticker::Ticker { ticks_per_second: 20f32, accumulator: 0f32 },
+            ticker: ticker::Ticker { ticks_per_second: 2000f32, accumulator: 0f32 },
             voxel_surface_buffer,
             voxel_surface_index_image,
             voxel_surface_counter_buffer,
@@ -305,6 +322,7 @@ impl InternalApp {
             self.physical_device,
             &self.device,
             extent,
+            &self.debug_marker,
         );
         self.images = images;
         self.swapchain_loader = swapchain_loader;
@@ -313,7 +331,7 @@ impl InternalApp {
         let rt_images: Vec<(vk::Image, Allocation)> = (0..self.images.len())
             .into_iter()
             .map(|_| {
-                swapchain::create_temporary_target_render_texture(
+                swapchain::create_temporary_target_render_image(
                     &self.instance,
                     &self.surface_loader,
                     self.surface_khr,
@@ -322,6 +340,8 @@ impl InternalApp {
                     &mut self.allocator,
                     self.queue_family_index,
                     extent,
+                    &self.debug_marker,
+                    c"temporary render target image"
                 )
             })
             .collect();
@@ -365,7 +385,7 @@ impl InternalApp {
             .begin_command_buffer(cmd, &cmd_buffer_begin_info)
             .unwrap();
 
-        self.sun = vek::Vec3::new(elapsed.sin(), 1.0, elapsed.cos()).normalized();
+        self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), (elapsed * 1.2f32).sin() * 0.5 + 0.8, (elapsed * 0.1f32).cos()).normalized();
 
         let push_constants = PushConstants2 {
             forward: vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32),
@@ -543,6 +563,21 @@ impl InternalApp {
         self.device
             .cmd_dispatch(cmd, width_group_size, height_group_size, 1);
 
+        let src_shader_write_to_transfer_src = vk::ImageMemoryBarrier2::default()
+            .old_layout(vk::ImageLayout::GENERAL)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .src_access_mask(vk::AccessFlags2::SHADER_WRITE)
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_READ)
+            .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            .src_queue_family_index(self.queue_family_index)
+            .dst_queue_family_index(self.queue_family_index)
+            .image(src_image)
+            .subresource_range(subresource_range);
+        let image_memory_barriers = [src_shader_write_to_transfer_src];
+        let dep = vk::DependencyInfo::default().image_memory_barriers(&image_memory_barriers);
+        self.device.cmd_pipeline_barrier2(cmd, &dep);
+
         let origin_offset = vk::Offset3D::default();
         let src_extent_offset = vk::Offset3D::default()
             .x(self.window.inner_size().width as i32 / swapchain::SCALING_FACTOR as i32)
@@ -571,12 +606,24 @@ impl InternalApp {
         self.device.cmd_blit_image(
             cmd,
             src_image,
-            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             dst_image,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             &regions,
             vk::Filter::NEAREST,
         );
+
+        let src_transfer_src_to_shader_read = vk::ImageMemoryBarrier2::default()
+            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags2::SHADER_WRITE)
+            .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            .src_queue_family_index(self.queue_family_index)
+            .dst_queue_family_index(self.queue_family_index)
+            .image(src_image)
+            .subresource_range(subresource_range);
 
         let blit_dst_to_present_layout_transition = vk::ImageMemoryBarrier2::default()
             .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
@@ -589,7 +636,8 @@ impl InternalApp {
             .dst_queue_family_index(self.queue_family_index)
             .image(dst_image)
             .subresource_range(subresource_range);
-        let image_memory_barriers = [blit_dst_to_present_layout_transition];
+
+        let image_memory_barriers = [src_shader_write_to_transfer_src, blit_dst_to_present_layout_transition];
         let dep = vk::DependencyInfo::default().image_memory_barriers(&image_memory_barriers);
         self.device.cmd_pipeline_barrier2(cmd, &dep);
 
@@ -698,7 +746,7 @@ impl InternalApp {
         self.device.destroy_device(None);
         log::info!("destroyed device");
 
-        if let Some((inst, debug_messenger)) = self.debug_messenger {
+        if let Some((inst, debug_messenger)) = self.debug {
             inst.destroy_debug_utils_messenger(debug_messenger, None);
             log::info!("destroyed debug utils messenger");
         }
