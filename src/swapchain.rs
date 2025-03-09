@@ -67,7 +67,7 @@ pub unsafe fn create_swapchain(
     (swapchain_loader, swapchain, images)
 }
 
-pub const SCALING_FACTOR: u32 = 4;
+pub const SCALING_FACTOR: u32 = 2;
 
 pub unsafe fn create_temporary_target_render_image(
     instance: &ash::Instance,

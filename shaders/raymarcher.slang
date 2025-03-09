@@ -42,7 +42,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     float3 tint = 1.0;
     int face = 0;
 
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 128; i++) {
         Voxel voxel = fetcher.fetch((int3)floored_pos);
 
         if (voxel.active) {
@@ -100,7 +100,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 // IT WORKS!!!
                 uint funny_index_magic = voxels_indices[(uint3)floored_pos];
 
-                float3 cached_color = 1.0;
+                float3 shadow = 1.0;
                 if (funny_index_magic != -1) {
                     uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
                     uint enabled_faces = (funny_index_magic >> (32 - 6)) & 0b111111;
@@ -115,7 +115,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     uint2 pixels = (uint2)(floor(flat * 4));
                     uint converted_to_flat_index = pixels.x + pixels.y * 4;
 
-                    cached_color = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+                    shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
                 }
                 
 
@@ -128,9 +128,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.face = face;
                 solver.sign = dir_sign;
                 float ao = solver.ao();
-                
 
-                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, cached_color);
+                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow);
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);
@@ -166,9 +165,22 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
 
     if (!hit) {
         color = sky(sun.xyz, ray_dir);
+
+        /*
+        float3 base = ray_pos;
+        float counter = 0;
+        for (int s = 0; s < 32; s++) {
+            base += ray_dir * 0.8;
+            uint temp = 0;
+            bool amog = dda(voxels, sun.xyz, base, temp);
+            counter += amog ? (1 - (temp / 16.0)) : 0.0;
+        }
+        color = lerp(color, 1.0, (counter / 32));
+        */
     }
 
     color *= tint;
+
     color = clamp(pow(aces(color * 1.3), 1 / 2.2), 0, 1);
     
     /*

@@ -18,6 +18,7 @@ pub struct PushConstants2 {
     pub position: vek::Vec4<f32>,
     pub sun: vek::Vec4<f32>,
     pub tick: u32,
+    pub delta: f32,
 }
 
 pub unsafe fn create_render_compute_pipeline(
@@ -136,7 +137,7 @@ pub unsafe fn create_compute_voxel_pipelines(
 
     let compute_test_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
         .flags(vk::PipelineShaderStageCreateFlags::empty())
-        .name(c"main2")
+        .name(c"update")
         .stage(vk::ShaderStageFlags::COMPUTE)
         .module(compute_shader_module);
 

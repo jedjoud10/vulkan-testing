@@ -17,7 +17,7 @@ RWStructuredBuffer<Atomic<uint>> counter;
 [numthreads(8, 8, 8)]
 void main(uint3 id: SV_DispatchThreadID) {
     int noisy = (int)(noise((float2)id.xz * 0.1) * 10);
-    int base = id.y - 15;
+    int base = noisy + id.y - 15;
     //base += hash13(id) * 4;
     bool reflective = false;
     bool refractive = false;
@@ -28,8 +28,8 @@ void main(uint3 id: SV_DispatchThreadID) {
 
 
     if (hash12(floor(id.xz / 4)) > 0.99) {
+        base -= 10;
         if (hash13(id) > 0.8) {
-            base -= 30;
             refractive = true;
         }
 
@@ -72,10 +72,11 @@ uint calculate_enabled_faces(uint3 id, float3 camera, float3 forward) {
     return enabled_faces;
 }
 
-static const uint SHADOW_ITER_COUNT = 32;
-static const uint SHADOW_SAMPLES = 4;
-static const float SHADOW_TEMPORAL_ACCUMULATOR_FACTOR = 0.02;
-static const float SHADOW_ANGLE_SPREAD_FACTOR = 0.02;
+static const uint SHADOW_ITER_COUNT = 48;
+static const uint SHADOW_SAMPLES_PER_TICK = 2;
+static const uint SURFACE_TEXELS_MODIFIED_PER_TICK = 8;
+static const float SHADOW_TEMPORAL_ACCUMULATOR_FACTOR = 8.0;
+static const float SHADOW_ANGLE_SPREAD_FACTOR = 0.05;
 
 float3 dda_shadownate(
     RWTexture3D<uint8_t> voxels,
@@ -111,7 +112,7 @@ float3 dda_shadownate(
 
 [shader("compute")]
 [numthreads(8, 8, 8)]
-void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun, uniform uint tick) {
+void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun, uniform uint tick, uniform float delta) {
     /*
     if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0 && (voxels[id] & 4) == 4) {
         voxels[id - uint3(0, 1, 0)] = voxels[id];
@@ -152,7 +153,17 @@ void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4
 
     float3 diff = normalize((float3)id - position.xyz + 0.5);
     bool block_visible = dot(forward.xyz, diff) > 0.0;
-    bool block_in_range = distance(id, position.xyz) < 50;
+
+    float2[4] distance_ranges = {
+        float2(0, 50),
+        float2(0, 50),
+        float2(0, 50),
+        float2(50, 100),
+    };
+
+    float d = distance(id, position.xyz);
+    bool block_in_range = distance_ranges[tick % 4].x < d && d < distance_ranges[tick % 4].y;
+    //bool block_in_range = distance_ranges[0].x < d && d < distance_ranges[0].y;
     bool blockinate = block_in_range && block_visible;
 
     uint funny_index_magic = voxel_indices[id];
@@ -169,24 +180,29 @@ void main2(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4
                     // This works!!!! Finally!!!
                     SurfaceData data = surface_data_buffer[original + indexu];
                     if (dot(offsets[i], sun.xyz) > 0) {
-                        for (int k = 0; k < 16; k++) {
-                            uint2 uv = uint2(k % 4, k / 4);
+                        for (int k = 0; k < SURFACE_TEXELS_MODIFIED_PER_TICK; k++) {
+                            // jarvis... randominate this shit....
+                            int p = hash(k * 423 + tick * 32 + id.x + id.y * 2 + id.z * 4) % 16;
+                            uint2 uv = uint2(p % 4, p / 4);
                             uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
                             float3 shadow_color = 0.0;
 
                             // ts so slow twin...
-                            for (int s = 0; s < SHADOW_SAMPLES; s++) {
-                                float3 sun_sample = normalize(sun.xyz + (hash33(s * 2432.43243 - id * 232.342 + unflattened * 1543.34 + tick * 43.23) - 0.5) * SHADOW_ANGLE_SPREAD_FACTOR);
+                            for (int s = 0; s < SHADOW_SAMPLES_PER_TICK; s++) {
+                                // jarvis... randominate this shit...
+                                float3 sun_sample = normalize(sun.xyz + (hash33(s * 2432.43243 - (id + unflattened / 4.0) * 232.342 + tick * 43.23) - 0.5) * SHADOW_ANGLE_SPREAD_FACTOR);
                                 float3 world_pos = id + 0.125 + offsets[i] * 0.15 + unflattened / 4.0 + sun_sample * 0.15;
                                 shadow_color += dda_shadownate(voxels, sun_sample, world_pos);
                             }
 
-                            uint8_t4 old = data.colors[k];
+                            uint8_t4 old = data.colors[p];
                             float3 a = old.xyz / 255.0;
-                            float3 b = shadow_color / SHADOW_SAMPLES;
-                            float3 output = lerp(a, b, SHADOW_TEMPORAL_ACCUMULATOR_FACTOR);
+                            float3 b = shadow_color / SHADOW_SAMPLES_PER_TICK;
 
-                            data.colors[k] = uint8_t4(clamp(output, 0, 1) * 255, 0);
+                            // TODO: find a better accumulator function...
+                            float3 output = lerp(a, b, clamp(SHADOW_TEMPORAL_ACCUMULATOR_FACTOR * delta, 0.01, 1.0));
+
+                            data.colors[p] = uint8_t4(clamp(output, 0, 1) * 255, 0);
                         }
                     } else {
                         data.colors = null_data;

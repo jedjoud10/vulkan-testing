@@ -274,7 +274,7 @@ impl InternalApp {
             allocator,
             voxel_image,
             rt_images,
-            ticker: ticker::Ticker { ticks_per_second: 20000f32, accumulator: 0f32, count: 0 },
+            ticker: ticker::Ticker { ticks_per_second: 120f32, accumulator: 0f32, count: 0 },
             voxel_surface_buffer,
             voxel_surface_index_image,
             voxel_surface_counter_buffer,
@@ -385,13 +385,17 @@ impl InternalApp {
             .begin_command_buffer(cmd, &cmd_buffer_begin_info)
             .unwrap();
 
-        self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), (elapsed * 1.2f32).sin() * 0.5 + 0.8, (elapsed * 0.1f32).cos()).normalized();
+        //self.sun = vek::Vec3::new(1f32, 0.3f32,0.5f32).normalized();
+        self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), 0.3, (elapsed * 0.1f32).cos()).normalized();
 
         let push_constants = PushConstants2 {
             forward: vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32),
             position: self.movement.position.with_w(0.0f32),
             sun: self.sun.normalized().with_w(0f32),
             tick: self.ticker.count,
+
+            // FIXME: assumes we are running the shadow calc for every frame...
+            delta: delta.max(1f32 / self.ticker.ticks_per_second),
         };
 
         let desc_temp = self.ticker.update(delta).then(|| voxel::update_voxel_thingies(

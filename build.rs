@@ -17,8 +17,7 @@ fn load_module(session: &mut slang::Session, file_name: &str) {
         return;
     };
 
-    let program = if let Some(entry_point2) = module.find_entry_point_by_name("main2") {
-        println!("cargo:warning=BRO");
+    let program = if let Some(entry_point2) = module.find_entry_point_by_name("update") {
         session
             .create_composite_component_type(&[
                 module.downcast().clone(),

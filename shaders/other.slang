@@ -3,6 +3,19 @@
 
 static const int size = 256;
 
+// Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
+// https://gist.github.com/keijiro/24f9d505fac238c9a2982c0d6911d8e3
+uint hash(uint s)
+{
+    s ^= 2747636419u;
+    s *= 2654435769u;
+    s ^= s >> 16;
+    s *= 2654435769u;
+    s ^= s >> 16;
+    s *= 2654435769u;
+    return s;
+}
+
 // https://www.shadertoy.com/view/4djSRW
 float hash12(float2 p) {
     float3 p3  = fract(float3(p.xyx) * .1031);
@@ -69,6 +82,36 @@ struct Fetcher {
         
         return Voxel.from_raw(raw);
     }
+}
+
+bool dda(
+    RWTexture3D<uint8_t> voxels,
+    float3 ray_dir,
+    float3 ray_pos,
+    out uint iter,
+) {
+    float3 floored_pos = floor(ray_pos);
+    float3 inv_dir = 1 / ray_dir;
+    float3 dir_sign = sign(ray_dir);
+    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
+    Fetcher fetcher = Fetcher(voxels, size);
+
+    for (int i = 0; i < 16; i++) {
+        Voxel voxel = fetcher.fetch((int3)(floored_pos));
+
+        if (voxel.active) {
+            iter = i;
+            return true;
+        }
+
+        float3 reconst = side_dist * inv_dir;
+        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
+        floored_pos += dir_sign * eqs;
+        side_dist += dir_sign * eqs;
+    }
+
+    iter = 16;
+    return false;
 }
 
 uint3 dda_shadownate2(
