@@ -42,7 +42,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     float3 tint = 1.0;
     int face = 0;
 
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 256; i++) {
         Voxel voxel = fetcher.fetch((int3)floored_pos);
 
         if (voxel.active) {

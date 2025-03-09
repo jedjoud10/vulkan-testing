@@ -274,7 +274,7 @@ impl InternalApp {
             allocator,
             voxel_image,
             rt_images,
-            ticker: ticker::Ticker { ticks_per_second: 2000f32, accumulator: 0f32 },
+            ticker: ticker::Ticker { ticks_per_second: 20000f32, accumulator: 0f32, count: 0 },
             voxel_surface_buffer,
             voxel_surface_index_image,
             voxel_surface_counter_buffer,
@@ -296,7 +296,7 @@ impl InternalApp {
             voxel::Voxel {
                 active: add,
                 reflective: false,
-                refractive: false,
+                refractive: true,
             }.into_raw(),
             position,
         )
@@ -391,6 +391,7 @@ impl InternalApp {
             forward: vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32),
             position: self.movement.position.with_w(0.0f32),
             sun: self.sun.normalized().with_w(0f32),
+            tick: self.ticker.count,
         };
 
         let desc_temp = self.ticker.update(delta).then(|| voxel::update_voxel_thingies(
@@ -637,7 +638,7 @@ impl InternalApp {
             .image(dst_image)
             .subresource_range(subresource_range);
 
-        let image_memory_barriers = [src_shader_write_to_transfer_src, blit_dst_to_present_layout_transition];
+        let image_memory_barriers = [src_transfer_src_to_shader_read, blit_dst_to_present_layout_transition];
         let dep = vk::DependencyInfo::default().image_memory_barriers(&image_memory_barriers);
         self.device.cmd_pipeline_barrier2(cmd, &dep);
 

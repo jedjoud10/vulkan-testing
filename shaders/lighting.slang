@@ -46,10 +46,11 @@ float3 light(float3 sun, Fetcher fetcher, uint3 id, float3 world, float3 dir, fl
         pixels.z = 7 - pixels.z;
     }
 
-    normal = normalize(normal + (hash33(pixels * float3(4.5984, 43.2323, -0.1212)) - 0.5) * 0.2);
+    normal = normalize(normal + (hash33(pixels * float3(4.5984, 43.2323, -0.1212)) - 0.5) * 0.05);
     float mixer = hash13(pixels * float3(123.321, 21.322, -32.321)) * 0.2 + 0.8;
 
-    float3 grass = pow(float3(17, 33, 19) / 255, 2.2);
+    // float3 grass = pow(float3(17, 33, 19) / 255, 2.2);
+    float3 grass = 1.0;
     float3 dirt = pow(float3(41, 37, 30) / 255, 2.2);
 
     float ndotl = max(dot(normal, sun), 0);

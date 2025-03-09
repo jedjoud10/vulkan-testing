@@ -17,6 +17,7 @@ pub struct PushConstants2 {
     pub forward: vek::Vec4<f32>,
     pub position: vek::Vec4<f32>,
     pub sun: vek::Vec4<f32>,
+    pub tick: u32,
 }
 
 pub unsafe fn create_render_compute_pipeline(

@@ -344,7 +344,7 @@ pub unsafe fn update_voxel_thingies(
         .src_queue_family_index(queue_family_index)
         .dst_queue_family_index(queue_family_index)
         .src_access_mask(vk::AccessFlags2::SHADER_READ | vk::AccessFlags2::MEMORY_READ)
-        .dst_access_mask(vk::AccessFlags2::SHADER_WRITE);
+        .dst_access_mask(vk::AccessFlags2::SHADER_WRITE | vk::AccessFlags2::SHADER_READ);
     let voxel_counter_buffer_read_to_write = vk::BufferMemoryBarrier2::default()
         .buffer(counter_buffer)
         .size(u64::MAX)
@@ -489,7 +489,7 @@ pub unsafe fn update_voxel_thingies(
         .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
         .src_queue_family_index(queue_family_index)
         .dst_queue_family_index(queue_family_index)
-        .src_access_mask(vk::AccessFlags2::SHADER_WRITE)
+        .src_access_mask(vk::AccessFlags2::SHADER_WRITE | vk::AccessFlags2::SHADER_READ)
         .dst_access_mask(vk::AccessFlags2::SHADER_READ | vk::AccessFlags2::MEMORY_READ);
     let voxel_counter_buffer_write_to_read = vk::BufferMemoryBarrier2::default()
         .buffer(counter_buffer)

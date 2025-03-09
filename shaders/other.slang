@@ -101,38 +101,6 @@ uint3 dda_shadownate2(
     return 0;
 }
 
-float3 dda_shadownate(
-    RWTexture3D<uint8_t> voxels,
-    float3 ray_dir,
-    float3 ray_pos,
-) {
-    float3 floored_pos = floor(ray_pos);
-    float3 inv_dir = 1 / ray_dir;
-    float3 dir_sign = sign(ray_dir);
-    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
-    float3 color = 1.0;
-
-    for (int i = 0; i < 32; i++) {
-        Voxel voxel = fetcher.fetch((int3)(floored_pos));
-
-        if (voxel.active && voxel.refractive) {
-            color *= normalize(hash33(floor(floored_pos) * float3(23.231, -435.4354, 9412.1)));
-        }
-
-        if (voxel.active && !voxel.refractive) {
-            return 0.0;
-        }
-
-        float3 reconst = side_dist * inv_dir;
-        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
-        floored_pos += dir_sign * eqs;
-        side_dist += dir_sign * eqs;
-    }
-
-    return color;
-}
-
 float3 normal(int face, float3 sign) {
     return -(float3)(face == int3(0, 1, 2)) * sign;
 }
@@ -147,52 +115,6 @@ int global_face(int face, float3 sign) {
     }
 
     return -1;
-}
-
-uint3 amogus(
-    float3 normal,
-) {
-    return clamp(normal * 0.5 + 0.5, 0, 1) * 64;
-}
-
-float3 dda_gi(
-    RWTexture3D<uint8_t> voxels,
-    float3 ray_dir,
-    float3 ray_pos,
-) {
-    float3 floored_pos = floor(ray_pos);
-    float3 inv_dir = 1 / ray_dir;
-    float3 dir_sign = sign(ray_dir);
-    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
-    float3 color = 1.0;
-    int face = 0;
-
-    for (int i = 0; i < 32; i++) {
-        Voxel voxel = fetcher.fetch((int3)(floored_pos));
-        float3 normal = normal(face, dir_sign);
-
-        float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
-        float max = max3(test.x, test.y, test.z);
-        float3 world = ray_pos + ray_dir * max;
-
-        if (voxel.active) {
-            ray_dir = reflect(ray_dir, normal);
-            inv_dir = 1 / ray_dir;
-            dir_sign = sign(ray_dir);
-            side_dist = (floored_pos - world + 0.5 + 0.5 * dir_sign);
-            ray_pos = world;
-            //tint *= normalize(hash33(floor(floored_pos) * float3(23.231, -435.4354, 9412.1)));
-        }
-
-        float3 reconst = side_dist * inv_dir;
-        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
-        face = firstbithigh(eqs.x | eqs.y << 1 | eqs.z << 2);
-        floored_pos += dir_sign * eqs;
-        side_dist += dir_sign * eqs;
-    }
-
-    return color;
 }
 
 static const uint8_t4[4 * 4] null_data = { uint8_t4(0,0,0,0) };
