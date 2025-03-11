@@ -296,7 +296,7 @@ impl InternalApp {
             voxel::Voxel {
                 active: add,
                 reflective: false,
-                refractive: true,
+                refractive: false,
             }.into_raw(),
             position,
         )

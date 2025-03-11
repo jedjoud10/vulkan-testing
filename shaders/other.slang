@@ -114,36 +114,6 @@ bool dda(
     return false;
 }
 
-uint3 dda_shadownate2(
-    RWTexture3D<uint8_t> voxels,
-    float3 ray_dir,
-    float3 ray_pos,
-    out uint face,
-) {
-    float3 floored_pos = floor(ray_pos);
-    float3 inv_dir = 1 / ray_dir;
-    float3 dir_sign = sign(ray_dir);
-    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
-    face = 0;
-
-    for (int i = 0; i < 16; i++) {
-        Voxel voxel = fetcher.fetch((int3)(floored_pos));
-
-        if (voxel.active && !voxel.refractive) {
-            return (uint3)((int3)floored_pos);
-        }
-
-        float3 reconst = side_dist * inv_dir;
-        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
-        face = firstbithigh(eqs.x | eqs.y << 1 | eqs.z << 2);
-        floored_pos += dir_sign * eqs;
-        side_dist += dir_sign * eqs;
-    }
-
-    return 0;
-}
-
 float3 normal(int face, float3 sign) {
     return -(float3)(face == int3(0, 1, 2)) * sign;
 }
@@ -160,11 +130,12 @@ int global_face(int face, float3 sign) {
     return -1;
 }
 
-static const uint8_t4[4 * 4] null_data = { uint8_t4(0,0,0,0) };
+static const uint8_t4[4 * 4] null_data = { uint8_t4(0, 0, 0, 0) };
+static const uint3[4 * 4] null_data2 = { 0 };
 
 struct SurfaceData {
     uint8_t4[4 * 4] colors;
-    //uint3 other;
+    uint3[4 * 4] colors2;
 }
 
 #endif

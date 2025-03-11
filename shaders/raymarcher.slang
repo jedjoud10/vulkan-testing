@@ -59,12 +59,12 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
             float3 normal = normal(face, dir_sign);
 
             if (voxel.refractive || voxel.reflective) {
-                normal += float3(sin(world.x * 10 + 0.2565), cos(world.y * 10 + 0.89684), sin(world.z * 10 - 0.211256)) * 0.04;
+                //normal += float3(sin(world.x * 10 + 0.2565), cos(world.y * 10 + 0.89684), sin(world.z * 10 - 0.211256)) * 0.12;
                 //normal += (hash33(uv * float3(23.231, -435.4354, 9412.1)) - 0.5) * 0.05;
-                normal = normalize(normal);
+                //normal = normalize(normal);
 
                 if (voxel.refractive) {
-                    ray_dir = refract(ray_dir, normal, 0.9);
+                    ray_dir = refract(ray_dir, normal, 0.7);
                 } else {
                     ray_dir = reflect(ray_dir, normal);
                 }
@@ -115,7 +115,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     uint2 pixels = (uint2)(floor(flat * 4));
                     uint converted_to_flat_index = pixels.x + pixels.y * 4;
 
-                    shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+                    // shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+                    shadow = surface_data.colors2[converted_to_flat_index] / 255.0;
                 }
                 
 
@@ -129,7 +130,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.sign = dir_sign;
                 float ao = solver.ao();
 
-                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow);
+                color = shadow;
+                //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow);
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);

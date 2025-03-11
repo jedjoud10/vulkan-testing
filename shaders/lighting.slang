@@ -7,7 +7,7 @@ float3 sky(float3 sun, float3 dir, bool enable_sun = true) {
     float3 sky2 = pow(float3(20, 45, 105) / 255.0, 2.2);
     float3 color = lerp(sky1, sky2, dir.y);
     float directed = max(dot(dir, sun), 0) * (enable_sun ? 1.0 : 0.0);
-    return pow(directed, 3000) * 10 + pow(directed, 50) * 0.1;
+    return pow(directed, 3000) * 10 + pow(directed, 50) * 0.1 + 0.3;
 }
 
 float2 flatten_uvs(int face, float3 dir_sign, float3 uvs) {
