@@ -116,7 +116,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     uint2 pixels = (uint2)(floor(flat * 4));
                     uint converted_to_flat_index = pixels.x + pixels.y * 4;
 
-                    //shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
+                    shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
                     uint packed = surface_data.colors2[converted_to_flat_index];
                     uint8_t4 unpacked = 0;
                     unpacked.x = packed & 0xFF;
@@ -136,8 +136,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.sign = dir_sign;
                 float ao = solver.ao();
 
-                color = gi;
-                //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi * 0.2;
+                //color = shadow * ao;
+                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow);
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);

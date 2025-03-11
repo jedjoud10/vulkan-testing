@@ -134,7 +134,7 @@ static const uint8_t4[4 * 4] null_data = { uint8_t4(0, 0, 0, 0) };
 static const uint[4 * 4] null_data2 = { 0 };
 
 struct SurfaceData {
-    //uint8_t4[4 * 4] colors;
+    uint8_t4[4 * 4] colors;
     uint[4 * 4] colors2;
 }
 
