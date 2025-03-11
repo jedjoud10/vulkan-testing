@@ -386,8 +386,8 @@ impl InternalApp {
             .begin_command_buffer(cmd, &cmd_buffer_begin_info)
             .unwrap();
 
-        //self.sun = vek::Vec3::new(1f32, 0.3f32,0.5f32).normalized();
-        self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), 0.3, (elapsed * 0.1f32).cos()).normalized();
+        self.sun = vek::Vec3::new(1f32, 0.3f32,0.5f32).normalized();
+        //self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), 0.3, (elapsed * 0.1f32).cos()).normalized();
 
         let push_constants = PushConstants2 {
             forward: vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32),

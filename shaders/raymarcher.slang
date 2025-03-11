@@ -122,7 +122,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     unpacked.x = packed & 0xFF;
                     unpacked.y = (packed >> 8) & 0xFF;
                     unpacked.z = (packed >> 16) & 0xFF;
-                    gi = float3(packed) / 255.0;
+                    gi = float3(unpacked.xyz) / 255.0;
                 }
                 
 
@@ -136,9 +136,9 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.sign = dir_sign;
                 float ao = solver.ao();
 
-                color = gi;
+                color = shadow + gi;
                 //color = shadow * ao;
-                //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow);
+                //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi * (1 - shadow);
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);
