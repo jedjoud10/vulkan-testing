@@ -297,6 +297,7 @@ impl InternalApp {
                 active: add,
                 reflective: false,
                 refractive: false,
+                placed: true,
             }.into_raw(),
             position,
         )

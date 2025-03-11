@@ -51,12 +51,14 @@ struct Voxel {
     bool active;
     bool reflective;
     bool refractive;
+    bool placed;
 
     uint8_t into_raw() {
         uint8_t raw = 0;
         raw |= active ? 1 : 0;
         raw |= reflective ? 2 : 0;
         raw |= refractive ? 4 : 0;
+        raw |= placed ? 8 : 0;
         return raw;
     }
 
@@ -65,6 +67,7 @@ struct Voxel {
         voxel.active = (raw & 1) == 1;
         voxel.reflective = ((raw >> 1) & 1) == 1;
         voxel.refractive = ((raw >> 2) & 1) == 1;
+        voxel.placed = ((raw >> 3) & 1) == 1;
         return voxel;
     }
 }

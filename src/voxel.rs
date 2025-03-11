@@ -597,10 +597,11 @@ pub struct Voxel {
     pub active: bool,
     pub reflective: bool,
     pub refractive: bool,
+    pub placed: bool,
 }
 
 impl Voxel {
     pub fn into_raw(self) -> u8 {
-        self.active as u8 | (self.reflective as u8) << 1 | (self.refractive as u8) << 2
+        self.active as u8 | (self.reflective as u8) << 1 | (self.refractive as u8) << 2 | (self.placed as u8) << 3
     }
 }
