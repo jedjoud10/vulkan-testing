@@ -136,7 +136,7 @@ GlassThingy dda_gi_nate(
     Fetcher fetcher = Fetcher(voxels, size);
     face = 0;
 
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 32; i++) {
         Voxel voxel = fetcher.fetch((int3)(floored_pos));
 
         float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
@@ -310,69 +310,68 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
                         uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
                         float3 shadow_color = 0.0;
 
-                        // create a random sample in the hemisphere pointing in the face direction...
-                        float3 random_sample = hash33((id + unflattened / 3.0) * 232.342 + tick * 43.23) - 0.5;
+                        for (int s = 0; s < 1; s++) {
+                            // create a random sample in the hemisphere pointing in the face direction...
+                            float3 random_sample = hash33((id + unflattened / 3.0) * 232.342 + tick * 43.23 + s * 432.43243) - 0.5;
 
-                        // rudementary mapping to keep is surface normal aligned
-                        if (dot(random_sample, offsets[i]) < 0) {
-                            random_sample = -random_sample;
-                        }
+                            // rudementary mapping to keep is surface normal aligned
+                            if (dot(random_sample, offsets[i]) < 0) {
+                                random_sample = -random_sample;
+                            }
 
-                        random_sample = normalize(random_sample);
+                            random_sample = normalize(random_sample);
+                            float3 world_pos = id + 0.125 + offsets[i] * 0.15 + unflattened / 4.0 + random_sample * 0.55;
+                            uint face = 0;
+                            float3 dir_sign = sign(random_sample);
 
-                        float3 world_pos = id + 0.125 + offsets[i] * 0.15 + unflattened / 4.0 + random_sample * 0.55;
-                        uint face = 0;
-                        float3 dir_sign = sign(random_sample);
+                            Fetcher fetcher;
+                            fetcher.max_size = size;
+                            fetcher.voxels = voxels;
 
-                        Fetcher fetcher;
-                        fetcher.max_size = size;
-                        fetcher.voxels = voxels;
+                            float3 src_color = light(sun.xyz, fetcher, id, 0.0, random_sample, unflattened / 3.0, offsets[i], 1.0, 1.0);
+                            uint8_t4 shadowed_FUCK_ME_I_NEED_TO_WORK_ON_MY_DISCRETE_ASSIGNMENT = surface_data_buffer[original + indexu].colors[p];
+                            float3 shadowed = shadowed_FUCK_ME_I_NEED_TO_WORK_ON_MY_DISCRETE_ASSIGNMENT.xyz / 255.0;
+                            GlassThingy target = dda_gi_nate(voxels, random_sample, world_pos, face);
+                            if (target.hit) {
+                                uint funny_index_magic = voxel_indices[target.floored];
+                                float3 uv = target.world - target.floored;
+                                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                                uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
+                                uint face2 = global_face(face, dir_sign);
+                                int packed_face_index = countbits((enabled_faces2 << (6 - face2)) & 0b111111);
+                                float3 normal = normal(face, dir_sign);
 
-                        float3 src_color = light(sun.xyz, fetcher, id, 0.0, random_sample, unflattened / 3.0, offsets[i], 1.0, 1.0);
-                        uint8_t4 shadowed_FUCK_ME_I_NEED_TO_WORK_ON_MY_DISCRETE_ASSIGNMENT = surface_data_buffer[original + indexu].colors[p];
-                        float3 shadowed = shadowed_FUCK_ME_I_NEED_TO_WORK_ON_MY_DISCRETE_ASSIGNMENT.xyz / 255.0; 
-                        GlassThingy target = dda_gi_nate(voxels, random_sample, world_pos, face);
-                        if (target.hit) {
-                            uint funny_index_magic = voxel_indices[target.floored];
-                            float3 uv = target.world - target.floored;
-                            uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
-                            uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
-                            uint face2 = global_face(face, dir_sign);
-                            int packed_face_index = countbits((enabled_faces2 << (6 - face2)) & 0b111111);
-                            float3 normal = normal(face, dir_sign);
+                                float2 flat = flatten_uvs(face, dir_sign, uv);
+                                uint2 pixels = (uint2)(floor(flat * 4));
+                                uint converted_to_flat_index = pixels.x + pixels.y * 4;
 
-                            float2 flat = flatten_uvs(face, dir_sign, uv);
-                            uint2 pixels = (uint2)(floor(flat * 4));
-                            uint converted_to_flat_index = pixels.x + pixels.y * 4;
+                                // src_color = 0.2;
 
-                            // src_color = 0.2;
-                            
+                                if (((enabled_faces2 >> face2) & 1) == 1 && funny_index_magic != -1 && converted_to_flat_index < 16 && converted_to_flat_index >= 0) {
 
-                            if (((enabled_faces2 >> face2) & 1) == 1 && funny_index_magic != -1 && converted_to_flat_index < 16 && converted_to_flat_index >= 0) {
+                                    uint current = surface_data_buffer[funny_index + packed_face_index].colors2[converted_to_flat_index];
+                                    uint8_t4 unpacked_current = 0;
+                                    unpacked_current.x = current & 0xFF;
+                                    unpacked_current.y = (current >> 8) & 0xFF;
+                                    unpacked_current.z = (current >> 16) & 0xFF;
 
+                                    float3 a = float3(unpacked_current.xyz) / 255.0;
+                                    float3 b = (dot(offsets[i], sun.xyz) * 0.5 + 0.5) * shadowed * src_color * 0.5;
+                                    float3 output = lerp(a, b, delta * 2.0);
 
-                                uint current = surface_data_buffer[funny_index + packed_face_index].colors2[converted_to_flat_index];
-                                uint8_t4 unpacked_current = 0;
-                                unpacked_current.x = current & 0xFF;
-                                unpacked_current.y = (current >> 8) & 0xFF;
-                                unpacked_current.z = (current >> 16) & 0xFF;
+                                    uint8_t4 unpacked = uint8_t4(clamp(output, 0, 1) * 255, 0);
+                                    uint packed = 0;
+                                    packed |= unpacked.x;
+                                    packed |= ((uint)unpacked.y) << 8;
+                                    packed |= ((uint)unpacked.z) << 16;
+                                    // InterlockedExchange(surface_data_buffer[funny_index + packed_face_index].colors2[converted_to_flat_index], clamp(current + 1, 0, 0xFFFFFF));
+                                    InterlockedExchange(surface_data_buffer[funny_index + packed_face_index].colors2[converted_to_flat_index], packed);
 
-                                float3 a = float3(unpacked_current.xyz) / 255.0;
-                                float3 b = (dot(offsets[i], sun.xyz) * 0.5 + 0.5) * shadowed;
-                                float3 output = lerp(a, b, delta * 2.0);
-
-                                uint8_t4 unpacked = uint8_t4(clamp(output, 0, 1) * 255, 0);
-                                uint packed = 0;
-                                packed |= unpacked.x;
-                                packed |= ((uint)unpacked.y) << 8;
-                                packed |= ((uint)unpacked.z) << 16;
-                                // InterlockedExchange(surface_data_buffer[funny_index + packed_face_index].colors2[converted_to_flat_index], clamp(current + 1, 0, 0xFFFFFF));
-                                InterlockedExchange(surface_data_buffer[funny_index + packed_face_index].colors2[converted_to_flat_index], packed);
-
-                                // surface_data_buffer[funny_index + packed_face_index].other = clamp(offsets[i], 0, 1) * 255;
-                                // InterlockedCompareExchange
-                                // InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.y, adder.y);
-                                // InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.z, adder.z);
+                                    // surface_data_buffer[funny_index + packed_face_index].other = clamp(offsets[i], 0, 1) * 255;
+                                    // InterlockedCompareExchange
+                                    // InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.y, adder.y);
+                                    // InterlockedAdd(surface_data_buffer[funny_index + packed_face_index].other.z, adder.z);
+                                }
                             }
                         }
                     }
