@@ -19,3 +19,20 @@ pub unsafe fn find_appropriate_queue_family_index(
         })
         .unwrap()
 }
+
+pub unsafe fn find_async_compute_queue(
+    physical_device: vk::PhysicalDevice,
+    queue_family_properties: Vec<vk::QueueFamilyProperties>,
+) -> usize {
+    queue_family_properties
+        .iter()
+        .enumerate()
+        .position(|(i, props)| {
+            let graphics = props.queue_flags.contains(vk::QueueFlags::GRAPHICS);
+            let compute = props.queue_flags.contains(vk::QueueFlags::COMPUTE);
+            let transfer = props.queue_flags.contains(vk::QueueFlags::TRANSFER);
+
+            return !graphics & compute & !transfer;
+        })
+        .unwrap()
+}

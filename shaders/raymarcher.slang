@@ -136,7 +136,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.sign = dir_sign;
                 float ao = solver.ao();
 
-                color = shadow + gi;
+                color = clamp(gi + shadow * 0.7, 0, 1);
                 //color = shadow * ao;
                 //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi;
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
