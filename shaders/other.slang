@@ -1,7 +1,7 @@
 #ifndef OTHER
 #define OTHER
 
-static const int size = 256;
+static const int size = 64;
 
 // Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
 // https://gist.github.com/keijiro/24f9d505fac238c9a2982c0d6911d8e3

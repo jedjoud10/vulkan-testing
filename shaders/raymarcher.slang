@@ -132,7 +132,15 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 solver.sign = dir_sign;
                 float ao = solver.ao();
 
-                color = gi;
+                color = shadow;
+                //color = gi;
+                /*
+                if (abs(normal.y) != 1) {
+                    color = gi + normal;
+                } else {
+                    color = gi;
+                }
+                */
                 //color = clamp(gi + shadow * 0.7, 0, 1);
                 //color = shadow;
                 //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi;
@@ -172,7 +180,6 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     if (!hit) {
         color = sky(sun.xyz, ray_dir);
 
-        /*
         float3 base = ray_pos;
         float counter = 0;
         for (int s = 0; s < 32; s++) {
@@ -182,7 +189,6 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
             counter += amog ? (1 - (temp / 16.0)) : 0.0;
         }
         color = lerp(color, 1.0, (counter / 32));
-        */
     }
 
     color *= tint;

@@ -83,7 +83,7 @@ static const float SHADOW_TEMPORAL_LERP_ACCUMULATOR_FACTOR = 8.0;
 static const bool SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR = true;
 static const float SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR_FACTOR = 10.0;
 static const float SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR_MARGIN = 0.3;
-static const float SHADOW_ANGLE_SPREAD_FACTOR = 0.01;
+static const float SHADOW_ANGLE_SPREAD_FACTOR = 0.03;
 
 float3 hemispherenate(int i, float3 n, int size, int face) {
     return 0.0;
@@ -207,7 +207,7 @@ GlassThingy dda_gi_nate(
 
 [shader("compute")]
 [numthreads(8, 8, 8)]
-void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun, uniform uint tick, uniform float delta_raw) {
+void update(uint3 id: SV_DispatchThreadID, uint3 group_id: SV_GroupThreadID, uniform float4 forward, uniform float4 position, uniform float4 sun, uniform uint tick, uniform float delta_raw) {
     /*
     if ((voxels[id - uint3(0, 1, 0)] & 1) == 0 && (voxels[id] & 1) == 1 && id.y > 0 && (voxels[id] & 4) == 4) {
         voxels[id - uint3(0, 1, 0)] = voxels[id];
@@ -255,15 +255,9 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
         float3 diff = normalize((float3)id - position.xyz + 0.5);
         bool block_visible = dot(forward.xyz, diff) > 0.0;
 
-        float2[4] distance_ranges = {
-            float2(0, 50),
-            float2(0, 50),
-            float2(0, 50),
-            float2(50, 100),
-        };
-
         float d = distance(id, position.xyz);
-        bool block_in_range = distance_ranges[tick % 4].x < d && d < distance_ranges[tick % 4].y;
+        bool block_in_range = d < 50;
+        block_in_range = true;
 
         float delta = delta_raw;
 
@@ -274,8 +268,10 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
             delta /= (3.0 / 4.0);
         }
 
+        bool force = tick % 4 == 3 && hash13(group_id * 31.231 + tick * 3.21312) > 0.01;
+
         // bool block_in_range = distance_ranges[0].x < d && d < distance_ranges[0].y;
-        bool blockinate = block_in_range && block_visible;
+        bool blockinate = block_in_range && (block_visible || force);
 
         uint funny_index_magic = voxel_indices[id];
         uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
@@ -286,9 +282,10 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
 
             for (int i = 0; i < 6; i++) {
                 bool face_visible_camera = dot(offsets[i], diff) < 0.0;
-                face_visible_camera = true;
+                // TODO: needed to have this be always true for GI stuff...
+                //face_visible_camera = true;
                 if (((enabled_faces >> i) & 1) == 1) {
-                    if (face_visible_camera) {
+                    if (face_visible_camera || force) {
                         // Per surface texel shadows!!!! Cached!!!
                         // This works!!!! Finally!!!
                         SurfaceData data = surface_data_buffer[original + indexu];
@@ -340,7 +337,7 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
                             data.colors[p] = uint8_t4(clamp(output, 0, 1) * 255, 0);
 
                             //float3 old_gi = unpack_gi_color(data.colors2[p]);
-                            //data.colors2[p] = pack_gi_color(lerp(old_gi, 0, delta * 0.2));
+                            //data.colors2[p] = pack_gi_color(lerp(old_gi, 0, 0.1 * delta));
                         }
 
 
@@ -362,13 +359,31 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
         }
         */
 
-        int indexu = 0;
-        if (enabled_faces > 0 && blockinate && original != -1 && DO_THE_FUNKY_GI) {
+        if (enabled_faces > 0 && original != -1) {
+            uint indexu = 0;
             for (int i = 0; i < 6; i++) {
                 if (((enabled_faces >> i) & 1) == 1) {
+                    SurfaceData data = surface_data_buffer[original + indexu];
                     for (int k = 0; k < 16; k++) {
+                        float3 old_gi = unpack_gi_color(data.colors2[k]);
+                        data.colors2[k] = pack_gi_color(lerp(old_gi, 0, 0.3 * delta));
+                    }
+
+                    surface_data_buffer[original + indexu] = data;
+
+                    indexu++;
+                }
+            }
+        }
+
+        int indexu = 0;
+        uint enabled_faces2 = calculate_enabled_faces(id, position.xyz, forward.xyz);
+        if (enabled_faces2 > 0 && DO_THE_FUNKY_GI) {
+            for (int i = 0; i < 6; i++) {
+                if (((enabled_faces2 >> i) & 1) == 1) {
+                    for (int k = 0; k < 64; k++) {
                         // jarvis... randominate this shit....
-                        int p = k;
+                        int p = k % 16;
                         //int p = hash(k * 423 + tick * 32 + id.x + id.y * 2 + id.z * 4) % 16;
                         uint2 uv = uint2(p % 4, p / 4);
                         uint3 unflattened = unflatten_uvs(i / 2, i % 2 == 0, uv);
@@ -387,57 +402,56 @@ void update(uint3 id: SV_DispatchThreadID, uniform float4 forward, uniform float
                         uint texel_index = p;
 
                         // assumes that there is color "accumulation" or "bleeding" between the indirection bounces
-                        uint8_t4 shadowed_packed = surface_data_buffer[block_index + face_index].colors[texel_index];
-                        float3 shadowed = shadowed_packed.xyz / 255.0;
-                        float3 src_color = abs(offsets[i]) * shadowed;
+                        float3 shadowed = 0.0;
 
-                        // number of indirection bounces...
-                        for (int i = 0; i < 1; i++) {
-                            //  create a random sample in the hemisphere pointing in the face direction...
-                            float3 rng = hash33((id + unflattened / 4.0) * 232.342 + tick * 43.23 + i * 34.42342) - 0.5;
-                            float3 random_sample = rng;
-                            if (dot(random_sample, offsets[face]) < 0) {
-                                random_sample = -random_sample;
-                            }
-                            //random_sample = normalize(random_sample) * 3) / 8.0;
-                            random_sample = -normalize(reflect(sun.xyz, offsets[face]) + rng * 0.2);
+                        if (original != -1) {
+                            shadowed = surface_data_buffer[block_index + face_index].colors[texel_index].xyz / 255.0;
+                        } else {
+                            shadowed = 1.0;
+                        }
+                        float3 src_color = shadowed;
 
-                            world_pos = thingymajig + 0.125 + offsets[face] * 0.15 + unflattened / 4.0 + random_sample * 0.35;
-                            face = 0;
-                            dir_sign = sign(random_sample);
+                        float3 random_sample = hash33((id + unflattened / 4.0) * 232.342 + tick * 43.23 + i * 34.42342 + k * 43.2342) - 0.5;
+                        if (dot(random_sample, offsets[face]) < 0) {
+                            random_sample = -random_sample;
+                        }
+                        random_sample = normalize(random_sample);
 
-                            GlassThingy target = dda_gi_nate(voxels, random_sample, world_pos, face);
-                            if (target.hit) {
-                                uint funny_index_magic = voxel_indices[target.floored];
-                                float3 uv = target.world - target.floored;
-                                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
-                                uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
-                                uint face2 = global_face(face, dir_sign);
-                                int packed_face_index = countbits((enabled_faces2 << (6 - face2)) & 0b111111);
-                                float3 normal = normal(face, dir_sign);
+                        world_pos = thingymajig + 0.125 + offsets[face] * 0.15 + unflattened / 4.0 + random_sample * 0.35;
+                        face = 0;
+                        dir_sign = sign(random_sample);
 
-                                float2 flat = flatten_uvs(face, dir_sign, uv);
-                                uint2 pixels = (uint2)(floor(flat * 4));
-                                uint converted_to_flat_index = pixels.x + pixels.y * 4;
+                        GlassThingy target = dda_gi_nate(voxels, random_sample, world_pos, face);
+                        if (target.hit) {
+                            uint funny_index_magic = voxel_indices[target.floored];
+                            float3 uv = target.world - target.floored;
+                            uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                            uint enabled_faces2 = (funny_index_magic >> (32 - 6)) & 0b111111;
+                            uint face2 = global_face(face, dir_sign);
+                            int packed_face_index = countbits((enabled_faces2 << (6 - face2)) & 0b111111);
+                            float3 normal = normal(face, dir_sign);
 
-                                // update bounce values...
-                                thingymajig = target.floored;
-                                face = face2;
-                                block_index = funny_index;
-                                face_index = packed_face_index;
-                                texel_index = converted_to_flat_index;
+                            float2 flat = flatten_uvs(face, dir_sign, uv);
+                            uint2 pixels = (uint2)(floor(flat * 4));
+                            uint converted_to_flat_index = pixels.x + pixels.y * 4;
 
-                                // deposit a bit of the color on this object, and then continue onto the next one!
-                                if (((enabled_faces2 >> face2) & 1) == 1 && funny_index_magic != -1 && converted_to_flat_index < 16 && converted_to_flat_index >= 0) {
+                            // update bounce values...
+                            thingymajig = target.floored;
+                            face = face2;
+                            block_index = funny_index;
+                            face_index = packed_face_index;
+                            texel_index = converted_to_flat_index;
 
-                                    uint current = surface_data_buffer[block_index + face_index].colors2[converted_to_flat_index];
-                                    float3 a = unpack_gi_color(current);
-                                    float3 b = src_color;
-                                    float3 output = lerp(a, b, delta * 0.5);
+                            // deposit a bit of the color on this object, and then continue onto the next one!
+                            if (((enabled_faces2 >> face2) & 1) == 1 && funny_index_magic != -1 && converted_to_flat_index < 16 && converted_to_flat_index >= 0) {
 
-                                    uint packed = pack_gi_color(output);
-                                    InterlockedExchange(surface_data_buffer[block_index + face_index].colors2[converted_to_flat_index], packed);
-                                }
+                                uint current = surface_data_buffer[block_index + face_index].colors2[converted_to_flat_index];
+                                float3 a = unpack_gi_color(current);
+                                float3 b = src_color;
+                                float3 output = lerp(a, b, delta * 1);
+
+                                uint packed = pack_gi_color(output);
+                                InterlockedExchange(surface_data_buffer[block_index + face_index].colors2[converted_to_flat_index], packed);
                             }
                         }
                         

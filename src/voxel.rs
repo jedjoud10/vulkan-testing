@@ -5,7 +5,7 @@ use gpu_allocator::vulkan::{Allocation, Allocator};
 
 use crate::pipeline::PushConstants2;
 
-pub const SIZE: u32 = 256;
+pub const SIZE: u32 = 64;
 
 pub unsafe fn create_voxel_image(
     device: &ash::Device,
