@@ -141,4 +141,21 @@ struct SurfaceData {
     uint[4 * 4] colors2;
 }
 
+float3 unpack_gi_color(uint packed) {
+    uint8_t4 unpacked_current = uint8_t4(0);
+    unpacked_current.x = (uint8_t)(packed & 0xFF);
+    unpacked_current.y = (uint8_t)((packed >> 8) & 0xFF);
+    unpacked_current.z = (uint8_t)((packed >> 16) & 0xFF);
+    return unpacked_current.xyz / 255.0;
+}
+
+uint pack_gi_color(float3 color) {
+    uint8_t4 unpacked = uint8_t4(clamp(color, 0, 1) * 255, 0);
+    uint packed = 0;
+    packed |= unpacked.x;
+    packed |= ((uint)unpacked.y) << 8;
+    packed |= ((uint)unpacked.z) << 16;
+    return packed;
+}
+
 #endif
