@@ -1,7 +1,8 @@
 #ifndef OTHER
 #define OTHER
 
-static const int size = 64;
+static const int SIZE = 64;
+static const uint INVALID = 0x3FFFFFF;
 
 // Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
 // https://gist.github.com/keijiro/24f9d505fac238c9a2982c0d6911d8e3
@@ -74,12 +75,11 @@ struct Voxel {
 
 struct Fetcher {
     RWTexture3D<uint8_t> voxels;
-    int max_size;
 
     Voxel fetch(int3 position) {
         uint8_t raw = 0;
 
-        if (all(position >= 0) && all(position < max_size)) {
+        if (all(position >= 0) && all(position < SIZE)) {
             raw = voxels[position];
         }
         
@@ -97,7 +97,7 @@ bool dda(
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
+    Fetcher fetcher = Fetcher(voxels);
 
     for (int i = 0; i < 16; i++) {
         Voxel voxel = fetcher.fetch((int3)(floored_pos));
@@ -138,7 +138,12 @@ static const uint[4 * 4] null_data2 = { 0 };
 
 struct SurfaceData {
     uint8_t4[4 * 4] colors;
-    uint[4 * 4] colors2;
+    //uint[4 * 4] colors2;
+
+    __init() {
+        colors = null_data;
+        // colors2 = null_data2;
+    }
 }
 
 float3 unpack_gi_color(uint packed) {

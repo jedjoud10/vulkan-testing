@@ -35,7 +35,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
 
-    Fetcher fetcher = Fetcher(voxels, size);
+    Fetcher fetcher = Fetcher(voxels);
     
     float3 color = 0.0;
     bool hit = false;
@@ -61,9 +61,11 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
             if (voxel.refractive || voxel.reflective) {
                 //normal += float3(sin(world.x * 10 + 0.2565), cos(world.y * 10 + 0.89684), sin(world.z * 10 - 0.211256)) * 0.12;
                 //normal += (hash33(uv * float3(23.231, -435.4354, 9412.1)) - 0.5) * 0.05;
-                //normal = normalize(normal);
+                normal = normalize(normal);
 
                 if (voxel.refractive) {
+                    //ray_dir = normalize(ray_dir - normal);
+                    //ray_dir = ray_dir;
                     ray_dir = refract(ray_dir, normal, 0.7);
                 } else {
                     ray_dir = reflect(ray_dir, normal);
@@ -100,10 +102,10 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 // IT WORKS!!!
                 uint funny_index_magic = voxels_indices[(uint3)floored_pos];
 
-                float3 shadow = 1.0;
+                float3 shadow = 0.0;
                 float3 gi = 0.0;
-                if (funny_index_magic != -1) {
-                    uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
+                if (funny_index != INVALID) {
                     uint enabled_faces = (funny_index_magic >> (32 - 6)) & 0b111111;
                     uint face2 = global_face(face, dir_sign);
 
@@ -117,8 +119,8 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     uint converted_to_flat_index = pixels.x + pixels.y * 4;
 
                     shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
-                    uint packed = surface_data.colors2[converted_to_flat_index];
-                    gi = unpack_gi_color(packed);
+                    //uint packed = surface_data.colors2[converted_to_flat_index];
+                    //gi = unpack_gi_color(packed);
                 }
                 
 
@@ -143,7 +145,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                 */
                 //color = clamp(gi + shadow * 0.7, 0, 1);
                 //color = shadow;
-                //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi;
+                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi;
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);
@@ -179,7 +181,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
 
     if (!hit) {
         color = sky(sun.xyz, ray_dir);
-
+        /*
         float3 base = ray_pos;
         float counter = 0;
         for (int s = 0; s < 32; s++) {
@@ -189,6 +191,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
             counter += amog ? (1 - (temp / 16.0)) : 0.0;
         }
         color = lerp(color, 1.0, (counter / 32));
+        */
     }
 
     color *= tint;

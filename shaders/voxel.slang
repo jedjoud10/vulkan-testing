@@ -31,13 +31,13 @@ void main(uint3 id: SV_DispatchThreadID) {
     if (hash12(floor(id.xz / 4)) > 0.99) {
         base -= 10;
         if (hash13(id) > 0.8) {
-            //refractive = true;
+            refractive = true;
         }
 
         // TODO: reflections don't work with the current shadow surface optimization1!!!
         if (hash12(id.xz) > 0.2) {
             //base -= 30;
-            //reflective = true;
+            reflective = true;
         }
     }
 
@@ -77,13 +77,13 @@ uint calculate_enabled_faces(uint3 id, float3 camera, float3 forward) {
 static const bool DO_THE_FUNKY_GI = true;
 static const bool RANDOMIZED_SURFACE_TEXELS = false;
 static const uint SHADOW_ITER_COUNT = 32;
-static const uint SHADOW_SAMPLES_PER_TICK = 4;
+static const uint SHADOW_SAMPLES_PER_TICK = 2;
 static const uint SURFACE_TEXELS_MODIFIED_PER_TICK = 16;
 static const float SHADOW_TEMPORAL_LERP_ACCUMULATOR_FACTOR = 8.0;
 static const bool SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR = true;
-static const float SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR_FACTOR = 10.0;
-static const float SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR_MARGIN = 0.3;
-static const float SHADOW_ANGLE_SPREAD_FACTOR = 0.03;
+static const float SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR_FACTOR = 5.0;
+static const float SHADOW_TEMPORAL_CLAMPED_ACCUMULATOR_MARGIN = 0.2;
+static const float SHADOW_ANGLE_SPREAD_FACTOR = 0.02;
 
 float3 hemispherenate(int i, float3 n, int size, int face) {
     return 0.0;
@@ -103,6 +103,7 @@ float3 hemispherenate(int i, float3 n, int size, int face) {
     */
 }
 
+// TODO: need to calculate how "close" we get to the surface...
 float3 dda_shadownate(
     RWTexture3D<uint8_t> voxels,
     float3 ray_dir,
@@ -112,7 +113,7 @@ float3 dda_shadownate(
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
+    Fetcher fetcher = Fetcher(voxels);
     float3 color = 1.0;
 
     for (int i = 0; i < SHADOW_ITER_COUNT; i++) {
@@ -135,37 +136,6 @@ float3 dda_shadownate(
     return color;
 }
 
-void dda_shadownate_dist(
-    RWTexture3D<uint8_t> voxels,
-    float3 ray_dir,
-    float3 ray_pos,
-    out float distance,
-) {
-    float3 floored_pos = floor(ray_pos);
-    float3 inv_dir = 1 / ray_dir;
-    float3 dir_sign = sign(ray_dir);
-    float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
-    distance = 0.0;
-
-    for (int i = 0; i < SHADOW_ITER_COUNT; i++) {
-        Voxel voxel = fetcher.fetch((int3)(floored_pos));
-
-        float3 test = (floored_pos - ray_pos + 0.5 - 0.5 * dir_sign) * inv_dir;
-        float max = max3(test.x, test.y, test.z);
-
-        if (voxel.active && !voxel.refractive) {
-            distance = max;
-            return;
-        }
-
-        float3 reconst = side_dist * inv_dir;
-        int3 eqs = select(min3(reconst.x, reconst.y, reconst.z) == reconst, 1, 0);
-        floored_pos += dir_sign * eqs;
-        side_dist += dir_sign * eqs;
-    }
-}
-
 struct GlassThingy {
     bool hit;
     uint3 floored;
@@ -182,7 +152,7 @@ GlassThingy dda_gi_nate(
     float3 inv_dir = 1 / ray_dir;
     float3 dir_sign = sign(ray_dir);
     float3 side_dist = (floored_pos - ray_pos + 0.5 + 0.5 * dir_sign);
-    Fetcher fetcher = Fetcher(voxels, size);
+    Fetcher fetcher = Fetcher(voxels);
     face = 0;
 
     for (int i = 0; i < 32; i++) {
@@ -219,37 +189,33 @@ void update(uint3 id: SV_DispatchThreadID, uint3 group_id: SV_GroupThreadID, uni
     bool empty = (voxels[id] & 1) == 0;
 
     if (empty) {
+        voxel_indices[id] = INVALID;
         return;
     }
 
-    uint original = 0;
+    // TREAT THIS AS -1 SINCE WE DO SOME BIT TWIDDLING AT THE END
+    uint original = INVALID;
 
-    if (!empty) {
-        if (tick == 0) {
-            voxel_indices[id] = -1;
+    if (tick == 0) {
+        uint enabled_faces = calculate_enabled_faces(id, position.xyz, forward.xyz);
 
-            uint enabled_faces = calculate_enabled_faces(id, position.xyz, forward.xyz);
-            if (enabled_faces == 0) {
-                return;
-            }
+        if (enabled_faces > 0) {
+            original = counter[0].add(countbits(enabled_faces), MemoryOrder.Relaxed);
+            uint some_magic = original;
+            some_magic |= enabled_faces << (32 - 6);
+            voxel_indices[id] = some_magic;
 
-            if (enabled_faces > 0) {
-                original = counter[0].add(countbits(enabled_faces), MemoryOrder.Relaxed);
-                uint some_magic = original;
-                some_magic |= enabled_faces << (32 - 6);
-                voxel_indices[id] = some_magic;
-
-                for (int i = 0; i < countbits(enabled_faces); i++) {
-                    SurfaceData data;
-                    data.colors = null_data;
-                    data.colors2 = null_data2;
-                    surface_data_buffer[original + i] = data;
-                }
+            for (int i = 0; i < countbits(enabled_faces); i++) {
+                SurfaceData data = SurfaceData();
+                surface_data_buffer[original + i] = data;
             }
         } else {
-            original = voxel_indices[id];
+            voxel_indices[id] = INVALID;
         }
+    } else {
+        original = voxel_indices[id];
     }
+    
 
     if (!empty) {
         float3 diff = normalize((float3)id - position.xyz + 0.5);
@@ -268,7 +234,7 @@ void update(uint3 id: SV_DispatchThreadID, uint3 group_id: SV_GroupThreadID, uni
             delta /= (3.0 / 4.0);
         }
 
-        bool force = tick % 4 == 3 && hash13(group_id * 31.231 + tick * 3.21312) > 0.01;
+        bool force = tick % 4 == 3 && hash13(group_id * 31.231 + tick * 3.21312) > 0.9;
 
         // bool block_in_range = distance_ranges[0].x < d && d < distance_ranges[0].y;
         bool blockinate = block_in_range && (block_visible || force);
@@ -277,7 +243,7 @@ void update(uint3 id: SV_DispatchThreadID, uint3 group_id: SV_GroupThreadID, uni
         uint funny_index = funny_index_magic & ~(0b111111 << (32 - 6));
         uint enabled_faces = (funny_index_magic >> (32 - 6)) & 0b111111;
 
-        if (enabled_faces > 0 && blockinate && original != -1) {
+        if (enabled_faces > 0 && blockinate && original != INVALID) {
             uint indexu = 0;
 
             for (int i = 0; i < 6; i++) {
@@ -352,13 +318,6 @@ void update(uint3 id: SV_DispatchThreadID, uint3 group_id: SV_GroupThreadID, uni
         AllMemoryBarrier();
 
         /*
-        for (int i = 0; i < countbits(enabled_faces); i++) {
-            SurfaceData data = surface_data_buffer[original + i];
-            data.colors2 = null_data2;
-            surface_data_buffer[original + i] = data;
-        }
-        */
-
         if (enabled_faces > 0 && original != -1) {
             uint indexu = 0;
             for (int i = 0; i < 6; i++) {
@@ -462,6 +421,7 @@ void update(uint3 id: SV_DispatchThreadID, uint3 group_id: SV_GroupThreadID, uni
         }
 
         AllMemoryBarrier();
+        */
     }
 
 
