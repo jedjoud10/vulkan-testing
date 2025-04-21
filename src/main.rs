@@ -50,6 +50,7 @@ struct InternalApp {
     debug_marker: Option<ash::ext::debug_utils::Device>,
     surface_loader: ash::khr::surface::Instance,
     surface_khr: vk::SurfaceKHR,
+    swapchain_format: vk::Format,
     swapchain_loader: ash::khr::swapchain::Device,
     swapchain: vk::SwapchainKHR,
     images: Vec<vk::Image>,
@@ -165,7 +166,7 @@ impl InternalApp {
             height: 600,
         };
 
-        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(
+        let (swapchain_loader, swapchain, images, swapchain_format) = swapchain::create_swapchain(
             &instance,
             &surface_loader,
             surface_khr,
@@ -256,6 +257,7 @@ impl InternalApp {
             debug: debug_messenger,
             debug_marker,
             swapchain_loader,
+            swapchain_format,
             swapchain,
             images,
             begin_semaphore,
@@ -294,9 +296,9 @@ impl InternalApp {
             self.pool,
             self.voxel_image.0,
             voxel::Voxel {
-                active: add,
+                active: true,
                 reflective: false,
-                refractive: true,
+                refractive: add,
                 placed: true,
             }.into_raw(),
             position,
@@ -316,7 +318,7 @@ impl InternalApp {
 
         let extent = vk::Extent2D { width, height };
 
-        let (swapchain_loader, swapchain, images) = swapchain::create_swapchain(
+        let (swapchain_loader, swapchain, images, swapchain_format) = swapchain::create_swapchain(
             &self.instance,
             &self.surface_loader,
             self.surface_khr,
@@ -327,6 +329,7 @@ impl InternalApp {
         );
         self.images = images;
         self.swapchain_loader = swapchain_loader;
+        self.swapchain_format = swapchain_format;
         self.swapchain = swapchain;
 
         let rt_images: Vec<(vk::Image, Allocation)> = (0..self.images.len())
@@ -386,8 +389,8 @@ impl InternalApp {
             .begin_command_buffer(cmd, &cmd_buffer_begin_info)
             .unwrap();
 
-        self.sun = vek::Vec3::new(1f32, 0.3f32,0.5f32).normalized();
-        //self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), 0.3, (elapsed * 0.1f32).cos()).normalized();
+        //self.sun = vek::Vec3::new(1f32, 0.3f32,0.5f32).normalized();
+        self.sun = vek::Vec3::new((elapsed * 0.1f32).sin(), 0.3, (elapsed * 0.1f32).cos()).normalized();
 
         let push_constants = PushConstants2 {
             forward: vek::Mat4::from(self.movement.rotation).mul_direction(-vek::Vec3::unit_z()).with_w(0.0f32),
@@ -424,7 +427,7 @@ impl InternalApp {
         let src_image_view_create_info = vk::ImageViewCreateInfo::default()
             .components(vk::ComponentMapping::default())
             .flags(vk::ImageViewCreateFlags::empty())
-            .format(vk::Format::R8G8B8A8_UNORM)
+            .format(self.swapchain_format)
             .image(src_image)
             .subresource_range(subresource_range)
             .view_type(vk::ImageViewType::TYPE_2D);
@@ -432,7 +435,7 @@ impl InternalApp {
         let dst_image_view_create_info = vk::ImageViewCreateInfo::default()
             .components(vk::ComponentMapping::default())
             .flags(vk::ImageViewCreateFlags::empty())
-            .format(vk::Format::R8G8B8A8_UNORM)
+            .format(self.swapchain_format)
             .image(dst_image)
             .subresource_range(subresource_range)
             .view_type(vk::ImageViewType::TYPE_2D);

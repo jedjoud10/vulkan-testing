@@ -14,6 +14,7 @@ pub unsafe fn create_swapchain(
     ash::khr::swapchain::Device,
     vk::SwapchainKHR,
     Vec<vk::Image>,
+    vk::Format,
 ) {
     let surface_capabilities = surface_loader
         .get_physical_device_surface_capabilities(physical_device, surface_khr)
@@ -64,7 +65,7 @@ pub unsafe fn create_swapchain(
         }
     }
 
-    (swapchain_loader, swapchain, images)
+    (swapchain_loader, swapchain, images, surface_formats[0].format)
 }
 
 pub const SCALING_FACTOR: u32 = 2;

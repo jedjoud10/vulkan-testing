@@ -31,7 +31,7 @@ pub unsafe fn create_device_and_queue(
 
     let device_extension_names = [
         ash::khr::swapchain::NAME,
-        ash::ext::debug_marker::NAME,
+        //ash::ext::debug_marker::NAME,
     ];
 
     let device_extension_names_ptrs = device_extension_names

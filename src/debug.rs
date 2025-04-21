@@ -86,11 +86,11 @@ pub unsafe extern "system" fn debug_callback(
         ),
         INFO => {
             if (message_id_number == 0x4fe1fef9) {
+                log::info!("{}", message.to_str().unwrap());
+                /*
                 let bruh = message.to_str().unwrap().split('|').collect::<Vec<&str>>();
                 let concat = bruh[2..].join("|");
-                log::info!("{}",
-                    concat.trim(),
-                )
+                */
             } else {
                 log::info!(
                     "{:?} [{} ({})] : {}\n",

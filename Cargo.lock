@@ -1258,7 +1258,7 @@ dependencies = [
 [[package]]
 name = "slang"
 version = "0.1.0"
-source = "git+https://github.com/jedjoud10/slang-rs.git#b52890d8fd0200fdda1cf3c50354d58b6823be4a"
+source = "git+https://github.com/FloatyMonkey/slang-rs.git#b4629e0e8fb4ba6d8e9549bdfe856959acc4e357"
 dependencies = [
  "slang-sys",
 ]
@@ -1266,7 +1266,7 @@ dependencies = [
 [[package]]
 name = "slang-sys"
 version = "0.1.0"
-source = "git+https://github.com/jedjoud10/slang-rs.git#b52890d8fd0200fdda1cf3c50354d58b6823be4a"
+source = "git+https://github.com/FloatyMonkey/slang-rs.git#b4629e0e8fb4ba6d8e9549bdfe856959acc4e357"
 dependencies = [
  "bindgen",
 ]

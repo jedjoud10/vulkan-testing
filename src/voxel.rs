@@ -6,6 +6,7 @@ use gpu_allocator::vulkan::{Allocation, Allocator};
 use crate::pipeline::PushConstants2;
 
 pub const SIZE: u32 = 64;
+pub const _SIZE: usize = SIZE as usize;
 
 pub unsafe fn create_voxel_image(
     device: &ash::Device,
@@ -79,10 +80,8 @@ pub unsafe fn create_voxel_surface_buffer(
     binder: &Option<ash::ext::debug_utils::Device>,
 ) -> (vk::Buffer, Allocation) {
     // store semi-worst case scenario?
-    // 6 faces per cube, store all faces for now
-    // 3 bytes for each face...
-    const SOME_ARBITRARY_SIZE_FOR_MAX_NUMBER_OF_CUBES_IDK: usize = 256*256*256 / 16;
-    let size = size_of::<vek::Vec4<u8>>() * 6 * SOME_ARBITRARY_SIZE_FOR_MAX_NUMBER_OF_CUBES_IDK;
+    const SOME_ARBITRARY_SIZE_FOR_MAX_NUMBER_OF_CUBES_IDK: usize = _SIZE*_SIZE*_SIZE / 64;
+    let size = size_of::<vek::Vec4<u8>>() * 6 * 16 * SOME_ARBITRARY_SIZE_FOR_MAX_NUMBER_OF_CUBES_IDK;
 
 
     let voxel_buffer_create_info = vk::BufferCreateInfo::default()
@@ -306,6 +305,7 @@ pub unsafe fn update_voxel_thingies(
     pipeline: vk::Pipeline,
     push_constants: PushConstants2,
 ) -> vk::DescriptorSet {
+
     let subresource_range = vk::ImageSubresourceRange::default()
         .base_mip_level(0)
         .aspect_mask(vk::ImageAspectFlags::COLOR)

@@ -117,7 +117,7 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     float2 flat = flatten_uvs(face, dir_sign, uv);
                     uint2 pixels = (uint2)(floor(flat * 4 - 0.002));
                     uint converted_to_flat_index = pixels.x + pixels.y * 4;
-
+                    //shadow = enabled_faces / 64.0;
                     shadow = float3(surface_data.colors[converted_to_flat_index].xyz / 255.0);
                     //uint packed = surface_data.colors2[converted_to_flat_index];
                     //gi = unpack_gi_color(packed);
@@ -143,9 +143,11 @@ void main(uint3 id: SV_DispatchThreadID, uniform float2 screen, uniform matrix<f
                     color = gi;
                 }
                 */
-                //color = clamp(gi + shadow * 0.7, 0, 1);
-                //color = shadow;
-                color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi;
+                // color = clamp(gi + shadow * 0.7, 0, 1);
+                // color = shadow;
+                
+                //color = select(funny_index == INVALID, 1.0, 0.0);
+                //color = light(sun.xyz, fetcher, (uint3)floored_pos, world, ray_dir, uv, normal, ao, shadow) + gi;
                 //                 float3 test = dda_shadownate(voxels, normalize(sun.xyz), world - ray_dir * 0.01);
                 //color = cached_color;
                 // color = float3(surface_data.colors[0].xyz / 255.0);

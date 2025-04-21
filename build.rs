@@ -58,8 +58,8 @@ fn main() {
 
     // All compiler options are available through this builder.
     let session_options = slang::CompilerOptions::default()
-        .optimization(slang::OptimizationLevel::High)
-        .use_vulkan_entry_point_names(true)
+        //.optimization(slang::OptimizationLevel::High)
+        .vulkan_use_entry_point_name(true)
         .matrix_layout_row(true);
 
     let target_desc = slang::TargetDesc::default().format(slang::CompileTarget::Spirv);
